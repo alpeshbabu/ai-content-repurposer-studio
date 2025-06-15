@@ -1,0 +1,296 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { checkDatabaseHealth } from '@/lib/prisma'
+import { getSystemHealth } from '@/lib/error-handler'
+import { logger, LogCategory } from '@/lib/logger'
+import { validateProductionEnvironment } from '@/lib/security'
+
+interface HealthCheck {
+  status: 'healthy' | 'degraded' | 'unhealthy'
+  timestamp: string
+  version: string
+  environment: string
+  uptime: number
+  checks: {
+    database: HealthCheckDetail
+    environment: HealthCheckDetail
+    memory: HealthCheckDetail
+    disk: HealthCheckDetail
+    services: HealthCheckDetail
+  }
+  metrics: {
+    memoryUsage: NodeJS.MemoryUsage
+    cpuUsage: number
+    responseTime: number
+    requestCount: number
+    errorRate: number
+  }
+  dependencies: {
+    [key: string]: HealthCheckDetail
+  }
+}
+
+interface HealthCheckDetail {
+  status: 'healthy' | 'degraded' | 'unhealthy'
+  message: string
+  latency?: number
+  details?: Record<string, any>
+}
+
+// In-memory metrics store (replace with Redis/InfluxDB in production)
+const metrics = {
+  requestCount: 0,
+  errorCount: 0,
+  totalResponseTime: 0,
+  lastReset: Date.now()
+}
+
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const startTime = Date.now()
+  
+  try {
+    logger.info('Health check requested', {
+      ip: req.headers.get('x-forwarded-for') || req.ip || 'unknown',
+      userAgent: req.headers.get('user-agent')
+    }, LogCategory.SYSTEM)
+
+    // Perform all health checks
+    const [
+      dbHealth,
+      envValidation,
+      systemHealth
+    ] = await Promise.allSettled([
+      checkDatabaseHealth(),
+      Promise.resolve(validateProductionEnvironment()),
+      Promise.resolve(getSystemHealth())
+    ])
+
+    // Database health check
+    const databaseCheck: HealthCheckDetail = dbHealth.status === 'fulfilled' && dbHealth.value.healthy
+      ? {
+          status: 'healthy',
+          message: 'Database connection is healthy',
+          latency: dbHealth.value.latency
+        }
+      : {
+          status: 'unhealthy',
+          message: dbHealth.status === 'fulfilled' 
+            ? dbHealth.value.error || 'Database connection failed'
+            : 'Database health check failed',
+          details: dbHealth.status === 'rejected' ? { error: dbHealth.reason } : undefined
+        }
+
+    // Environment validation check
+    const environmentCheck: HealthCheckDetail = envValidation.status === 'fulfilled' && envValidation.value.ready
+      ? {
+          status: 'healthy',
+          message: 'Environment configuration is valid'
+        }
+      : {
+          status: envValidation.status === 'fulfilled' ? 'degraded' : 'unhealthy',
+          message: envValidation.status === 'fulfilled' 
+            ? `Environment issues: ${envValidation.value.issues.join(', ')}`
+            : 'Environment validation failed',
+          details: envValidation.status === 'fulfilled' ? { issues: envValidation.value.issues } : undefined
+        }
+
+    // Memory usage check
+    const memoryUsage = process.memoryUsage()
+    const memoryUsedMB = memoryUsage.heapUsed / 1024 / 1024
+    const memoryLimitMB = memoryUsage.heapTotal / 1024 / 1024
+    const memoryUsagePercent = (memoryUsedMB / memoryLimitMB) * 100
+
+    // Adjust memory thresholds based on environment
+    const isProduction = process.env.NODE_ENV === 'production'
+    const unhealthyThreshold = isProduction ? 90 : 98
+    const degradedThreshold = isProduction ? 70 : 85
+
+    const memoryCheck: HealthCheckDetail = {
+      status: memoryUsagePercent > unhealthyThreshold ? 'unhealthy' : memoryUsagePercent > degradedThreshold ? 'degraded' : 'healthy',
+      message: `Memory usage: ${memoryUsedMB.toFixed(2)}MB (${memoryUsagePercent.toFixed(1)}%)`,
+      details: {
+        used: `${memoryUsedMB.toFixed(2)}MB`,
+        total: `${memoryLimitMB.toFixed(2)}MB`,
+        percentage: `${memoryUsagePercent.toFixed(1)}%`
+      }
+    }
+
+    // Disk space check (simplified for containerized environments)
+    const diskCheck: HealthCheckDetail = {
+      status: 'healthy',
+      message: 'Disk space monitoring not implemented in container environment'
+    }
+
+    // Services check (circuit breakers)
+    const servicesHealth = systemHealth.status === 'fulfilled' ? systemHealth.value : { status: 'unhealthy', services: {}, features: {} }
+    const servicesCheck: HealthCheckDetail = {
+      status: servicesHealth.status,
+      message: `Services status: ${servicesHealth.status}`,
+      details: servicesHealth.services
+    }
+
+    // Calculate CPU usage (simplified)
+    const cpuUsage = process.cpuUsage()
+    const cpuUsagePercent = (cpuUsage.user + cpuUsage.system) / 1000000 // Convert to seconds
+
+    // Calculate metrics
+    metrics.requestCount++
+    const responseTime = Date.now() - startTime
+    metrics.totalResponseTime += responseTime
+    
+    const avgResponseTime = metrics.totalResponseTime / metrics.requestCount
+    const errorRate = (metrics.errorCount / metrics.requestCount) * 100
+
+    // Reset metrics periodically (every hour)
+    if (Date.now() - metrics.lastReset > 3600000) {
+      metrics.requestCount = 1
+      metrics.errorCount = 0
+      metrics.totalResponseTime = responseTime
+      metrics.lastReset = Date.now()
+    }
+
+    // Dependency checks
+    const dependencies: Record<string, HealthCheckDetail> = {}
+
+    // Check external APIs if configured
+    if (process.env.ANTHROPIC_API_KEY) {
+      dependencies.anthropic = {
+        status: 'healthy',
+        message: 'Anthropic API configured'
+      }
+    } else {
+      dependencies.anthropic = {
+        status: 'degraded',
+        message: 'Anthropic API not configured'
+      }
+    }
+
+    if (process.env.STRIPE_SECRET_KEY) {
+      dependencies.stripe = {
+        status: 'healthy',
+        message: 'Stripe configured'
+      }
+    } else {
+      dependencies.stripe = {
+        status: 'degraded',
+        message: 'Stripe not configured'
+      }
+    }
+
+    // Overall status
+    const allChecks = [databaseCheck, environmentCheck, memoryCheck, diskCheck, servicesCheck]
+    const unhealthyCount = allChecks.filter(check => check.status === 'unhealthy').length
+    const degradedCount = allChecks.filter(check => check.status === 'degraded').length
+
+    let overallStatus: 'healthy' | 'degraded' | 'unhealthy'
+    if (unhealthyCount > 0) {
+      overallStatus = 'unhealthy'
+    } else if (degradedCount > 0) {
+      overallStatus = 'degraded'
+    } else {
+      overallStatus = 'healthy'
+    }
+
+    const healthCheck: HealthCheck = {
+      status: overallStatus,
+      timestamp: new Date().toISOString(),
+      version: process.env.npm_package_version || '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      uptime: Math.floor(process.uptime()),
+      checks: {
+        database: databaseCheck,
+        environment: environmentCheck,
+        memory: memoryCheck,
+        disk: diskCheck,
+        services: servicesCheck
+      },
+      metrics: {
+        memoryUsage,
+        cpuUsage: cpuUsagePercent,
+        responseTime,
+        requestCount: metrics.requestCount,
+        errorRate
+      },
+      dependencies
+    }
+
+    // Log health check result
+    if (overallStatus === 'unhealthy') {
+      logger.error('System health check failed', undefined, {
+        status: overallStatus,
+        failedChecks: allChecks.filter(check => check.status === 'unhealthy').length
+      }, LogCategory.SYSTEM)
+    } else if (overallStatus === 'degraded') {
+      logger.warn('System health degraded', {
+        status: overallStatus,
+        degradedChecks: allChecks.filter(check => check.status === 'degraded').length
+      }, LogCategory.SYSTEM)
+    }
+
+    // Return appropriate status code
+    const statusCode = overallStatus === 'healthy' ? 200 : overallStatus === 'degraded' ? 200 : 503
+
+    return NextResponse.json(healthCheck, { 
+      status: statusCode,
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    })
+
+  } catch (error) {
+    logger.error('Health check endpoint error', error as Error, {
+      endpoint: '/api/system/health'
+    })
+
+    metrics.errorCount++
+
+    const errorHealthCheck: HealthCheck = {
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      version: process.env.npm_package_version || '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      uptime: Math.floor(process.uptime()),
+      checks: {
+        database: { status: 'unhealthy', message: 'Health check failed' },
+        environment: { status: 'unhealthy', message: 'Health check failed' },
+        memory: { status: 'unhealthy', message: 'Health check failed' },
+        disk: { status: 'unhealthy', message: 'Health check failed' },
+        services: { status: 'unhealthy', message: 'Health check failed' }
+      },
+      metrics: {
+        memoryUsage: process.memoryUsage(),
+        cpuUsage: 0,
+        responseTime: Date.now() - startTime,
+        requestCount: metrics.requestCount,
+        errorRate: (metrics.errorCount / metrics.requestCount) * 100
+      },
+      dependencies: {}
+    }
+
+    return NextResponse.json(errorHealthCheck, { 
+      status: 503,
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    })
+  }
+}
+
+// Liveness probe (simple check for Kubernetes)
+export async function HEAD(): Promise<NextResponse> {
+  try {
+    // Very basic liveness check
+    const dbHealth = await checkDatabaseHealth()
+    
+    if (dbHealth.healthy) {
+      return new NextResponse(null, { status: 200 })
+    } else {
+      return new NextResponse(null, { status: 503 })
+    }
+  } catch (error) {
+    return new NextResponse(null, { status: 503 })
+  }
+} 

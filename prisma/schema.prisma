@@ -1,0 +1,319 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Admin Credential Management Model
+model AdminCredential {
+  id          String   @id @default(cuid())
+  username    String   @unique
+  passwordHash String
+  name        String
+  email       String   @unique
+  role        String   // owner, admin, support, marketing, finance, content_developer
+  permissions String[] // Array of permission strings
+  isActive    Boolean  @default(true)
+  lastLogin   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?  // ID of admin who created this account
+
+  @@index([username])
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+}
+
+// NextAuth.js required models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model User {
+  id                      String          @id @default(cuid())
+  email                   String          @unique
+  emailVerified           DateTime?
+  name                    String?
+  image                   String?
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+  subscriptionPlan        String          @default("free")
+  subscriptionStatus      String          @default("inactive")
+  subscriptionRenewalDate DateTime?
+  usageThisMonth          Int             @default(0)
+  teamId                  String?
+  role                    String?         @default("member")
+  
+  // Payment fields
+  stripeCustomerId        String?         @unique
+  defaultPaymentMethodId  String?
+  billingAddress          Json?           // Store billing address as JSON
+  
+  // Auth relations
+  accounts                Account[]
+  sessions                Session[]
+  // App relations
+  contents                Content[]
+  DailyUsage              DailyUsage[]
+  overageCharges          OverageCharge[]
+  settings                Settings?
+  supportTickets          SupportTicket[]
+  ticketReplies           TicketReply[]
+  usageHistory            UsageHistory[]
+  reviews                 Review[]
+  team                    Team?           @relation(fields: [teamId], references: [id])
+  sentInvitations         TeamInvitation[] @relation("InvitedBy")
+  paymentMethods          PaymentMethod[]
+  subscriptions           Subscription[]
+  invoices                Invoice[]
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  memberLimit Int      @default(3)
+  members     User[]
+  invitations TeamInvitation[]
+}
+
+model TeamInvitation {
+  id        String   @id @default(cuid())
+  teamId    String
+  email     String
+  invitedBy String
+  status    String   @default("pending") // pending, accepted, declined, expired
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  inviter   User     @relation("InvitedBy", fields: [invitedBy], references: [id])
+
+  @@unique([teamId, email])
+  @@index([email])
+  @@index([token])
+}
+
+model UsageHistory {
+  id         String   @id @default(cuid())
+  userId     String
+  month      Int
+  year       Int
+  usageCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month, year])
+}
+
+model Content {
+  id              String              @id @default(cuid())
+  title           String
+  originalContent String
+  contentType     String
+  userId          String
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repurposed      RepurposedContent[]
+}
+
+model RepurposedContent {
+  id              String   @id @default(cuid())
+  platform        String
+  content         String
+  contentId       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  originalContent Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+}
+
+model Settings {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  brandVoice         String?
+  preferredPlatforms String[]
+  apiKey             String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DailyUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date], name: "userId_date")
+  @@index([userId])
+}
+
+model OverageCharge {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Float
+  count     Int
+  date      DateTime @default(now())
+  status    String   @default("pending")
+  invoiceId String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+model SupportTicket {
+  id          String        @id @default(cuid())
+  userId      String
+  subject     String
+  description String
+  status      String        @default("open")
+  priority    String        @default("medium")
+  category    String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replies     TicketReply[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model TicketReply {
+  id            String        @id @default(cuid())
+  ticketId      String
+  userId        String
+  message       String
+  isStaff       Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  attachmentUrl String?
+  ticket        SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([userId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  rating    Int      // 1-5 star rating
+  title     String?
+  message   String
+  status    String   @default("pending") // pending, approved, rejected
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([rating])
+  @@index([status])
+  @@index([isPublic])
+}
+
+// Payment Models for Stripe Integration
+model PaymentMethod {
+  id                String   @id @default(cuid())
+  userId            String
+  stripePaymentMethodId String @unique
+  type              String   // card, bank_account, etc.
+  brand             String?  // visa, mastercard, etc.
+  last4             String?  // last 4 digits
+  expiryMonth       Int?
+  expiryYear        Int?
+  isDefault         Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stripePaymentMethodId])
+}
+
+model Subscription {
+  id                    String   @id @default(cuid())
+  userId                String
+  stripeSubscriptionId  String   @unique
+  stripePriceId         String
+  status                String   // active, canceled, incomplete, etc.
+  currentPeriodStart    DateTime
+  currentPeriodEnd      DateTime
+  cancelAtPeriodEnd     Boolean  @default(false)
+  canceledAt            DateTime?
+  trialStart            DateTime?
+  trialEnd              DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stripeSubscriptionId])
+  @@index([status])
+}
+
+model Invoice {
+  id              String   @id @default(cuid())
+  userId          String
+  stripeInvoiceId String   @unique
+  amount          Float
+  currency        String   @default("usd")
+  status          String   // paid, open, draft, etc.
+  hostedInvoiceUrl String?
+  invoicePdf      String?
+  description     String?
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stripeInvoiceId])
+  @@index([status])
+}
