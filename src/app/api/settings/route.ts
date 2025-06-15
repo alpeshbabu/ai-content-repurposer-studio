@@ -5,6 +5,10 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { CacheService } from '@/lib/cache'
 
+// Force dynamic to prevent build-time execution
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 // Validation schema
 const settingsSchema = z.object({
   brandVoice: z.string().max(1000, 'Brand voice must be less than 1000 characters').optional().nullable(),

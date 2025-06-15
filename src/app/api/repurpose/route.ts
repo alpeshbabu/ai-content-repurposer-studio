@@ -13,6 +13,10 @@ import {
 } from '@/lib/db-setup'
 import { z } from 'zod'
 
+// Force dynamic to prevent build-time execution
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 // Validation schema
 const repurposeContentSchema = z.object({
   title: z.string().min(1, 'Title is required'),

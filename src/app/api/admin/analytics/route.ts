@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { validateAdminRequest } from '@/lib/admin-auth';
-import { prisma } from '@/lib/prisma';
+import { withPrisma } from '@/lib/prisma-dynamic';
+
+// Force dynamic to prevent build-time execution
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(req: Request) {
   try {
@@ -35,35 +39,37 @@ export async function GET(req: Request) {
       userSubscriptions,
       dailyUsages,
       overageCharges
-    ] = await Promise.all([
-      prisma.user.count().catch(() => 0),
-      prisma.content?.count().catch(() => 0) || 0,
-      prisma.supportTicket?.findMany().catch(() => []) || [],
-      prisma.user.findMany({
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          subscriptionPlan: true,
-          subscriptionStatus: true,
-          createdAt: true,
-          emailVerified: true,
-          usageThisMonth: true,
-          role: true
-        }
-      }).catch(() => []),
-      prisma.dailyUsage?.findMany({
-        where: {
-          date: { gte: startDate }
-        },
-        orderBy: { date: 'asc' }
-      }).catch(() => []) || [],
-      prisma.overageCharge?.findMany({
-        where: {
-          createdAt: { gte: startDate }
-        }
-      }).catch(() => []) || []
-    ]);
+    ] = await withPrisma(async (prisma) => {
+      return Promise.all([
+        prisma.user.count().catch(() => 0),
+        prisma.content?.count().catch(() => 0) || 0,
+        prisma.supportTicket?.findMany().catch(() => []) || [],
+        prisma.user.findMany({
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            subscriptionPlan: true,
+            subscriptionStatus: true,
+            createdAt: true,
+            emailVerified: true,
+            usageThisMonth: true,
+            role: true
+          }
+        }).catch(() => []),
+        prisma.dailyUsage?.findMany({
+          where: {
+            date: { gte: startDate }
+          },
+          orderBy: { date: 'asc' }
+        }).catch(() => []) || [],
+        prisma.overageCharge?.findMany({
+          where: {
+            createdAt: { gte: startDate }
+          }
+        }).catch(() => []) || []
+      ]);
+    });
 
     // Calculate subscription breakdown with safe defaults
     const subscriptionBreakdown = userSubscriptions.reduce((acc: any, user: any) => {

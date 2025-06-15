@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { withPrisma } from '@/lib/prisma-dynamic'
 import { tableExists } from '@/lib/db-setup'
 import { CacheService } from '@/lib/cache'
+
+// Force dynamic to prevent build-time execution
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(req: Request) {
   try {
@@ -36,31 +40,35 @@ export async function GET(req: Request) {
     }
 
     try {
-      // Get total count for pagination
-      const totalCount = await prisma.content.count({
-        where: {
-          userId: userId
-        }
-      })
-
-      // Fetch user's content with repurposed content
-      const contents = await prisma.content.findMany({
-        where: {
-          userId: userId
-        },
-        include: {
-          repurposed: {
+      // Get total count for pagination and fetch content
+      const { totalCount, contents } = await withPrisma(async (prisma) => {
+        const [totalCount, contents] = await Promise.all([
+          prisma.content.count({
+            where: {
+              userId: userId
+            }
+          }),
+          prisma.content.findMany({
+            where: {
+              userId: userId
+            },
+            include: {
+              repurposed: {
+                orderBy: {
+                  createdAt: 'desc'
+                }
+              }
+            },
             orderBy: {
               createdAt: 'desc'
-            }
-          }
-        },
-        orderBy: {
-          createdAt: 'desc'
-        },
-        take: limit,
-        skip: offset
-      })
+            },
+            take: limit,
+            skip: offset
+          })
+        ]);
+        
+        return { totalCount, contents };
+      });
 
       // Format the response to ensure consistent date formatting
       const formattedContents = contents.map(content => ({

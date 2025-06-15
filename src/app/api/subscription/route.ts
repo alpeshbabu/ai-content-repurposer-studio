@@ -11,6 +11,10 @@ import {
 } from '@/lib/db-setup';
 import { CacheService } from '@/lib/cache';
 
+// Force dynamic to prevent build-time execution
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
