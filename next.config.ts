@@ -11,14 +11,30 @@ const nextConfig: NextConfig = {
     minimumCacheTTL: 60,
   },
   
-  // Webpack configuration for better bundling
-  webpack: (config) => {
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      fs: false,
-      net: false,
-      tls: false,
-    };
+  // Turbopack configuration for development (now stable)
+  turbopack: {
+    rules: {
+      '*.svg': {
+        loaders: ['@svgr/webpack'],
+        as: '*.js',
+      },
+    },
+    resolveAlias: {
+      '@': './src',
+    },
+  },
+  
+  // Webpack configuration for production builds
+  webpack: (config, { dev }) => {
+    // Only apply webpack config in production or when not using turbopack
+    if (!dev) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+      };
+    }
     return config;
   },
   

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAdminRequest } from '@/lib/admin-auth'
-import { prisma } from '@/lib/prisma'
+import { withPrisma } from '@/lib/prisma-dynamic'
 import { logger, LogCategory } from '@/lib/logger'
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
   try {
@@ -40,67 +43,71 @@ export async function GET(req: NextRequest) {
     }
 
     // Get tickets with pagination
-    const [tickets, totalCount] = await Promise.all([
-      prisma.supportTicket.findMany({
-        where,
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              name: true,
-              subscriptionPlan: true
-            }
-          },
-          replies: {
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  email: true,
-                  name: true
+    const [tickets, totalCount, stats, avgResponseTime] = await withPrisma(async (prisma) => {
+      const [ticketsData, totalCountData] = await Promise.all([
+        prisma.supportTicket.findMany({
+          where,
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                name: true,
+                subscriptionPlan: true
+              }
+            },
+            replies: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    email: true,
+                    name: true
+                  }
                 }
               }
             }
+          },
+          orderBy: [
+            { priority: 'desc' },
+            { createdAt: 'desc' }
+          ],
+          skip,
+          take: limit
+        }),
+        prisma.supportTicket.count({ where })
+      ]);
+
+      // Get summary statistics
+      const statsData = await prisma.supportTicket.groupBy({
+        by: ['status'],
+        _count: {
+          status: true
+        }
+      });
+
+      // Calculate response metrics
+      const avgResponseTimeData = await prisma.supportTicketReply.aggregate({
+        where: {
+          isStaff: true,
+          createdAt: {
+            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
           }
         },
-        orderBy: [
-          { priority: 'desc' },
-          { createdAt: 'desc' }
-        ],
-        skip,
-        take: limit
-      }),
-      prisma.supportTicket.count({ where })
-    ])
+        _avg: {
+          id: true // This is a placeholder - you'd calculate actual response time
+        }
+      });
 
-    // Get summary statistics
-    const stats = await prisma.supportTicket.groupBy({
-      by: ['status'],
-      _count: {
-        status: true
-      }
-    })
+      return [ticketsData, totalCountData, statsData, avgResponseTimeData];
+    });
 
     const statusCounts = stats.reduce((acc, stat) => {
       acc[stat.status] = stat._count.status
       return acc
     }, {} as Record<string, number>)
-
-    // Calculate response metrics
-    const avgResponseTime = await prisma.supportTicketReply.aggregate({
-      where: {
-        isStaff: true,
-        createdAt: {
-          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
-        }
-      },
-      _avg: {
-        id: true // This is a placeholder - you'd calculate actual response time
-      }
-    })
 
     logger.info('Admin support tickets retrieved', {
       adminUser: authResult.payload?.username,

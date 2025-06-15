@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminHandler, AdminAccessControl } from '@/lib/admin-middleware';
-import { prisma } from '@/lib/prisma';
+import { withPrisma } from '@/lib/prisma-dynamic';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export const GET = createAdminHandler(
   async (req: NextRequest, user, payload) => {
@@ -25,38 +28,40 @@ export const GET = createAdminHandler(
         userSubscriptions,
         overageCharges,
         dailyUsages
-      ] = await Promise.all([
-        prisma.user.count().catch(() => 0),
-        prisma.user.findMany({
-          select: {
-            id: true,
-            subscriptionPlan: true,
-            subscriptionStatus: true,
-            createdAt: true,
-            usageThisMonth: true
-          }
-        }).catch(() => []),
-        prisma.overageCharge.findMany({
-          where: {
-            date: { gte: startDate }
-          },
-          include: {
-            user: {
-              select: {
-                id: true,
-                email: true,
-                name: true,
-                subscriptionPlan: true
+      ] = await withPrisma(async (prisma) => {
+        return Promise.all([
+          prisma.user.count().catch(() => 0),
+          prisma.user.findMany({
+            select: {
+              id: true,
+              subscriptionPlan: true,
+              subscriptionStatus: true,
+              createdAt: true,
+              usageThisMonth: true
+            }
+          }).catch(() => []),
+          prisma.overageCharge.findMany({
+            where: {
+              date: { gte: startDate }
+            },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  name: true,
+                  subscriptionPlan: true
+                }
               }
             }
-          }
-        }).catch(() => []),
-        prisma.dailyUsage.findMany({
-          where: {
-            date: { gte: startDate }
-          }
-        }).catch(() => [])
-      ]);
+          }).catch(() => []),
+          prisma.dailyUsage.findMany({
+            where: {
+              date: { gte: startDate }
+            }
+          }).catch(() => [])
+        ]);
+      });
 
       // Calculate subscription breakdown
       const subscriptionBreakdown = userSubscriptions.reduce((acc: any, user: any) => {

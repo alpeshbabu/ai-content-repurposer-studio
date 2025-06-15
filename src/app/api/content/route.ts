@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { withPrisma } from '@/lib/prisma-dynamic'
 import { tableExists } from '@/lib/db-setup'
-import { CacheService } from '@/lib/cache'
+import { withCache } from '@/lib/cache-dynamic'
 
 // Force dynamic to prevent build-time execution
 export const dynamic = 'force-dynamic';
@@ -25,7 +25,9 @@ export async function GET(req: Request) {
     const page = Math.floor(offset / limit) + 1
 
     // Check cache first
-    const cachedData = await CacheService.getContentList(userId, page, limit)
+    const cachedData = await withCache(async (cache) => {
+      return await cache.getContentList(userId, page, limit);
+    })
     if (cachedData) {
       return NextResponse.json(cachedData)
     }
@@ -94,7 +96,9 @@ export async function GET(req: Request) {
       }
 
       // Cache the response
-      await CacheService.setContentList(userId, page, limit, responseData)
+      await withCache(async (cache) => {
+        await cache.setContentList(userId, page, limit, responseData);
+      })
 
       // Return paginated response
       return NextResponse.json(responseData)
@@ -103,7 +107,8 @@ export async function GET(req: Request) {
       
       // Try raw SQL as fallback
       try {
-        const rawContents = await prisma.$queryRawUnsafe(`
+        const rawContents = await withPrisma(async (prisma) => {
+          return await prisma.$queryRawUnsafe(`
           SELECT 
             c."id",
             c."title",
@@ -131,7 +136,8 @@ export async function GET(req: Request) {
           GROUP BY c."id", c."title", c."originalContent", c."contentType", c."userId", c."createdAt", c."updatedAt"
           ORDER BY c."createdAt" DESC
           LIMIT $2 OFFSET $3
-        `, userId, limit, offset)
+          `, userId, limit, offset);
+        });
 
         return NextResponse.json(rawContents || [])
       } catch (rawError) {
@@ -170,7 +176,8 @@ export async function POST(req: Request) {
 
     try {
       // Create the content and its repurposed versions in a transaction
-      const savedContent = await prisma.content.create({
+      const savedContent = await withPrisma(async (prisma) => {
+        return await prisma.content.create({
         data: {
           title,
           originalContent: content,
@@ -186,10 +193,13 @@ export async function POST(req: Request) {
         include: {
           repurposed: true
         }
-      })
+        });
+      });
 
       // Invalidate content list cache for this user
-      await CacheService.invalidateContentList(userId)
+      await withCache(async (cache) => {
+        await cache.invalidateContentList(userId);
+      })
 
       return NextResponse.json(savedContent)
     } catch (dbError) {

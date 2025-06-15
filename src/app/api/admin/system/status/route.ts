@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAdminRequest } from '@/lib/admin-auth'
-import { prisma } from '@/lib/prisma'
+import { withPrisma } from '@/lib/prisma-dynamic'
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
   const startTime = Date.now()
@@ -41,7 +44,9 @@ export async function GET(req: NextRequest) {
     // Test database connection
     try {
       const dbStart = Date.now()
-      await prisma.$queryRaw`SELECT 1`
+      await withPrisma(async (prisma) => {
+        await prisma.$queryRaw`SELECT 1`
+      });
       status.services.database.status = 'healthy'
       status.services.database.latency = Date.now() - dbStart
     } catch (error) {
@@ -58,7 +63,9 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-      const userCount = await prisma.user.count()
+      const userCount = await withPrisma(async (prisma) => {
+        return await prisma.user.count()
+      });
       dbOperations.userCount = userCount
       status.endpoints.working.push('user-count')
     } catch (error) {
@@ -66,7 +73,9 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-      const ticketCount = await prisma.supportTicket.count()
+      const ticketCount = await withPrisma(async (prisma) => {
+        return await prisma.supportTicket.count()
+      });
       dbOperations.ticketCount = ticketCount
       status.endpoints.working.push('ticket-count')
     } catch (error) {

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { withPrisma } from '@/lib/prisma-dynamic'
 import { z } from 'zod'
-import { CacheService } from '@/lib/cache'
+import { withCache } from '@/lib/cache-dynamic'
 
 // Force dynamic to prevent build-time execution
 export const dynamic = 'force-dynamic';
@@ -25,18 +25,24 @@ export async function GET() {
     }
 
     // Check cache first
-    const cachedSettings = await CacheService.getUserSettings(userId)
+    const cachedSettings = await withCache(async (cache) => {
+      return await cache.getUserSettings(userId);
+    })
     if (cachedSettings) {
       return NextResponse.json(cachedSettings)
     }
 
-    const settings = await prisma.settings.findUnique({ 
-      where: { userId } 
-    })
+    const settings = await withPrisma(async (prisma) => {
+      return await prisma.settings.findUnique({ 
+        where: { userId } 
+      });
+    });
     
     // Cache the settings
     if (settings) {
-      await CacheService.setUserSettings(userId, settings)
+      await withCache(async (cache) => {
+        await cache.setUserSettings(userId, settings);
+      });
     }
     
     return NextResponse.json(settings)
@@ -79,22 +85,26 @@ export async function POST(req: Request) {
 
     const { brandVoice, preferredPlatforms } = validation.data
 
-    const settings = await prisma.settings.upsert({
-      where: { userId },
-      update: { 
-        brandVoice, 
-        preferredPlatforms,
-        updatedAt: new Date()
-      },
-      create: { 
-        userId, 
-        brandVoice, 
-        preferredPlatforms 
-      },
-    })
+    const settings = await withPrisma(async (prisma) => {
+      return await prisma.settings.upsert({
+        where: { userId },
+        update: { 
+          brandVoice, 
+          preferredPlatforms,
+          updatedAt: new Date()
+        },
+        create: { 
+          userId, 
+          brandVoice, 
+          preferredPlatforms 
+        },
+      });
+    });
     
     // Invalidate user settings cache
-    await CacheService.invalidateUserSettings(userId)
+    await withCache(async (cache) => {
+      await cache.invalidateUserSettings(userId);
+    })
     
     return NextResponse.json(settings)
   } catch (error) {

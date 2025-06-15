@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { withPrisma } from '@/lib/prisma-dynamic';
 import { updateSubscription, SUBSCRIPTION_LIMITS, DAILY_LIMITS } from '@/lib/subscription';
 import type { SubscriptionPlan } from '@/lib/subscription';
 import { 
@@ -9,7 +9,7 @@ import {
   ensureDailyUsageTableExists,
   tableExists
 } from '@/lib/db-setup';
-import { CacheService } from '@/lib/cache';
+import { withCache } from '@/lib/cache-dynamic';
 
 // Force dynamic to prevent build-time execution
 export const dynamic = 'force-dynamic';
@@ -25,8 +25,12 @@ export async function GET(req: Request) {
     }
 
     // Check cache first for subscription and usage data
-    const cachedSubscription = await CacheService.getSubscription(userId);
-    const cachedUsageData = await CacheService.getUsageData(userId);
+    const cachedSubscription = await withCache(async (cache) => {
+      return await cache.getSubscription(userId);
+    });
+    const cachedUsageData = await withCache(async (cache) => {
+      return await cache.getUsageData(userId);
+    });
     
     if (cachedSubscription && cachedUsageData) {
       return NextResponse.json({
@@ -65,14 +69,16 @@ export async function GET(req: Request) {
 
     try {
       // Try to find the user
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          subscriptionPlan: true,
-          subscriptionStatus: true,
-          subscriptionRenewalDate: true,
-          usageThisMonth: true
-        }
+      const user = await withPrisma(async (prisma) => {
+        return await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            subscriptionPlan: true,
+            subscriptionStatus: true,
+            subscriptionRenewalDate: true,
+            usageThisMonth: true
+          }
+        });
       }).catch(error => {
         console.error('Error fetching user data:', error);
         return null;
@@ -145,11 +151,13 @@ export async function GET(req: Request) {
           const today = new Date(new Date().setHours(0, 0, 0, 0));
           
           // Use dynamic query to avoid TypeScript errors about missing models
-          const dailyUsageResult = await prisma.$queryRawUnsafe<{ count: number }[]>(
-            `SELECT "count" FROM "DailyUsage" WHERE "userId" = $1 AND "date" = $2 LIMIT 1`,
-            userId,
-            today.toISOString()
-          ).catch(() => []);
+          const dailyUsageResult = await withPrisma(async (prisma) => {
+            return await prisma.$queryRawUnsafe<{ count: number }[]>(
+              `SELECT "count" FROM "DailyUsage" WHERE "userId" = $1 AND "date" = $2 LIMIT 1`,
+              userId,
+              today.toISOString()
+            );
+          }).catch(() => []);
           
           const dailyUsed = dailyUsageResult.length > 0 ? Number(dailyUsageResult[0].count) : 0;
           
@@ -168,8 +176,10 @@ export async function GET(req: Request) {
       }
 
       // Cache the response data
-      await CacheService.setSubscription(userId, response.subscription);
-      await CacheService.setUsageData(userId, response.usage);
+      await withCache(async (cache) => {
+        await cache.setSubscription(userId, response.subscription);
+        await cache.setUsageData(userId, response.usage);
+      });
 
       return NextResponse.json(response);
     } catch (dbError) {
@@ -256,8 +266,10 @@ export async function POST(req: Request) {
       );
 
       // Invalidate cached subscription and usage data
-      await CacheService.invalidateSubscription(userId);
-      await CacheService.invalidateUsageData(userId);
+      await withCache(async (cache) => {
+        await cache.invalidateSubscription(userId);
+        await cache.invalidateUsageData(userId);
+      });
 
       return NextResponse.json({
         success: true,

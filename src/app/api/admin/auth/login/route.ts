@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { prisma } from '@/lib/prisma';
+import { withPrisma } from '@/lib/prisma-dynamic';
+
+// Force dynamic to prevent build-time execution
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 // Fallback credentials from environment variables (matching .env.local)
 const FALLBACK_CREDENTIALS = {
@@ -31,7 +35,8 @@ export async function POST(request: Request) {
 
     try {
       // First, try to find credentials in database
-      const adminCredential = await prisma.adminCredential.findUnique({
+      const adminCredential = await withPrisma(async (prisma) => {
+        return await prisma.adminCredential.findUnique({
         where: { 
           username: username.toLowerCase(),
           isActive: true
@@ -46,6 +51,7 @@ export async function POST(request: Request) {
           permissions: true,
           isActive: true
         }
+        });
       });
 
       let member = null;
@@ -65,9 +71,11 @@ export async function POST(request: Request) {
           };
 
           // Update last login time
-          await prisma.adminCredential.update({
-            where: { id: adminCredential.id },
-            data: { lastLogin: new Date() }
+          await withPrisma(async (prisma) => {
+            await prisma.adminCredential.update({
+              where: { id: adminCredential.id },
+              data: { lastLogin: new Date() }
+            });
           }).catch(error => {
             console.log('Failed to update last login:', error);
           });

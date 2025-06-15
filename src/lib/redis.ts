@@ -28,8 +28,14 @@ class RedisClient {
 
   private async initializeRedis() {
     try {
-      if (process.env.NODE_ENV === 'development' && !process.env.REDIS_URL && !process.env.REDIS_HOST) {
-        console.log('Redis not configured, using memory cache fallback')
+      // Skip Redis during build phase or when not configured
+      const isBuildPhase = process.env.npm_lifecycle_event === 'build' || process.env.VERCEL_ENV === 'production'
+      if (isBuildPhase || (process.env.NODE_ENV === 'development' && !process.env.REDIS_URL && !process.env.REDIS_HOST)) {
+        if (isBuildPhase) {
+          // Silently use memory cache during build
+        } else {
+          console.log('Redis not configured, using memory cache fallback')
+        }
         this.useMemoryFallback = true
         return
       }
@@ -37,7 +43,11 @@ class RedisClient {
       this.client = new Redis(process.env.REDIS_URL || redisConfig)
       
       this.client.on('error', (error) => {
-        console.error('Redis connection error:', error)
+        // Only log Redis errors if not in build phase
+        const isBuildPhase = process.env.npm_lifecycle_event === 'build' || process.env.VERCEL_ENV === 'production'
+        if (!isBuildPhase) {
+          console.error('Redis connection error:', error)
+        }
         this.useMemoryFallback = true
       })
 

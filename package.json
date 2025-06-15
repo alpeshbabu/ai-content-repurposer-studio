@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "build": "NODE_NO_WARNINGS=1 next build",
+    "build:verbose": "next build",
     "start": "next start",
     "lint": "next lint",
     "test": "jest",

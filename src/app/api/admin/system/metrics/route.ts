@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateAdminRequest } from '@/lib/admin-auth'
-import { prisma } from '@/lib/prisma'
+import { withPrisma } from '@/lib/prisma-dynamic'
 import { logger, LogCategory } from '@/lib/logger'
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
   try {
@@ -57,14 +60,18 @@ export async function GET(req: NextRequest) {
       const dbStart = Date.now()
       
       // Test connection with a simple query
-      await prisma.$queryRaw`SELECT 1`
+      await withPrisma(async (prisma) => {
+        await prisma.$queryRaw`SELECT 1`
+      });
       
       metrics.database.connected = true
       metrics.database.connectionTime = Date.now() - dbStart
 
       // Get basic database statistics (simplified for stability)
       try {
-        const userCount = await prisma.user.count()
+        const userCount = await withPrisma(async (prisma) => {
+          return await prisma.user.count()
+        });
         metrics.database.totalQueries = 1
         
         // Add basic application metrics

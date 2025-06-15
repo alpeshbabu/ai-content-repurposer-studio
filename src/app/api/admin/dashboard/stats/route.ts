@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { validateAdminRequest } from '@/lib/admin-auth';
-import { prisma } from '@/lib/prisma';
+import { withPrisma } from '@/lib/prisma-dynamic';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(req: Request) {
   try {
@@ -16,27 +19,29 @@ export async function GET(req: Request) {
       totalContent,
       supportTickets,
       userSubscriptions
-    ] = await Promise.all([
-      // Total users
-      prisma.user.count(),
-      
-      // Total content pieces
-      prisma.content?.count().catch(() => 0) || 0,
-      
-      // Support tickets (assuming there's a support ticket table)
-      prisma.supportTicket?.findMany().catch(() => []) || [],
-      
-      // User subscription data
-      prisma.user.findMany({
-        select: {
-          id: true,
-          subscriptionPlan: true,
-          subscriptionStatus: true,
-          createdAt: true,
-          usageThisMonth: true
-        }
-      }).catch(() => [])
-    ]);
+    ] = await withPrisma(async (prisma) => {
+      return Promise.all([
+        // Total users
+        prisma.user.count(),
+        
+        // Total content pieces
+        prisma.content?.count().catch(() => 0) || 0,
+        
+        // Support tickets (assuming there's a support ticket table)
+        prisma.supportTicket?.findMany().catch(() => []) || [],
+        
+        // User subscription data
+        prisma.user.findMany({
+          select: {
+            id: true,
+            subscriptionPlan: true,
+            subscriptionStatus: true,
+            createdAt: true,
+            usageThisMonth: true
+          }
+        }).catch(() => [])
+      ]);
+    });
 
     // Calculate subscription breakdown
     const subscriptionBreakdown = userSubscriptions.reduce((acc, user) => {
@@ -101,7 +106,9 @@ export async function GET(req: Request) {
     let systemHealth = 'healthy';
     try {
       // Test database connection
-      await prisma.$queryRaw`SELECT 1`;
+      await withPrisma(async (prisma) => {
+        await prisma.$queryRaw`SELECT 1`;
+      });
     } catch (dbError) {
       systemHealth = 'warning';
     }

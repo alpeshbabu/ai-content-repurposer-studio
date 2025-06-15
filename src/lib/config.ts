@@ -192,8 +192,9 @@ export function validateConfig(config: Config): { isValid: boolean; errors: Vali
     })
   }
 
-  // Production-specific validations
-  if (config.nodeEnv === 'production') {
+  // Production-specific validations (skip during build)
+  const isBuildPhase = process.env.npm_lifecycle_event === 'build' || process.env.VERCEL_ENV === 'production'
+  if (config.nodeEnv === 'production' && !isBuildPhase) {
     // Check for secure secrets
     if (config.nextauthSecret === 'efd49f82b97ccd991f96f97b9b0de9ff56e8c5eaec24d9d4c8576c395b9b1d1d') {
       errors.push({

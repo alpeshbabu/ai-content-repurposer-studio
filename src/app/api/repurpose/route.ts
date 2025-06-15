@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { withPrisma } from '@/lib/prisma-dynamic'
 import { incrementUsage, recordOverageCharge, SubscriptionPlan, SUBSCRIPTION_LIMITS, DAILY_LIMITS } from '@/lib/subscription'
 import { aiService, Platform, AIProvider } from '@/lib/ai-service'
 import { 
@@ -100,20 +100,22 @@ export async function POST(req: Request) {
       // Get user's subscription plan and payment status
       let user;
       try {
-        user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: {
-            subscriptionPlan: true,
-            subscriptionStatus: true,
-            usageThisMonth: true,
-            subscriptions: {
-              where: { 
-                status: { in: ['active', 'trialing'] }
-              },
-              orderBy: { createdAt: 'desc' },
-              take: 1
+        user = await withPrisma(async (prisma) => {
+          return await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+              subscriptionPlan: true,
+              subscriptionStatus: true,
+              usageThisMonth: true,
+              subscriptions: {
+                where: { 
+                  status: { in: ['active', 'trialing'] }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 1
+              }
             }
-          }
+          });
         });
       } catch (error) {
         console.error('Error fetching user data:', error);
@@ -170,13 +172,15 @@ export async function POST(req: Request) {
           const today = new Date(new Date().setHours(0, 0, 0, 0));
           
           // Use dynamic query instead of model-based query
-          const dailyUsageResult = await prisma.$queryRawUnsafe<{ count: number }[]>(
-            `SELECT "count" FROM "DailyUsage" 
-             WHERE "userId" = $1 AND "date" = $2 
-             LIMIT 1`,
-            userId,
-            today.toISOString()
-          );
+          const dailyUsageResult = await withPrisma(async (prisma) => {
+            return await prisma.$queryRawUnsafe<{ count: number }[]>(
+              `SELECT "count" FROM "DailyUsage" 
+               WHERE "userId" = $1 AND "date" = $2 
+               LIMIT 1`,
+              userId,
+              today.toISOString()
+            );
+          });
           
           const dailyUsed = dailyUsageResult && dailyUsageResult.length > 0 
             ? Number(dailyUsageResult[0].count) 
@@ -225,7 +229,9 @@ export async function POST(req: Request) {
       
       if (settingsTableExists) {
         try {
-          const settings = await prisma.settings.findUnique({ where: { userId } });
+          const settings = await withPrisma(async (prisma) => {
+            return await prisma.settings.findUnique({ where: { userId } });
+          });
           if (!userBrandVoice) {
             userBrandVoice = settings?.brandVoice || '';
           }
@@ -338,39 +344,45 @@ export async function POST(req: Request) {
         
         if (contentTableExists && repurposedContentTableExists) {
           // Use Prisma model approach
-          newContent = await prisma.content.create({
-            data: {
-              title,
-              originalContent: content,
-              contentType,
-              userId,
-              repurposed: {
-                create: repurposedContent.map(item => ({
-                  platform: item.platform,
-                  content: item.content
-                }))
+          newContent = await withPrisma(async (prisma) => {
+            return await prisma.content.create({
+              data: {
+                title,
+                originalContent: content,
+                contentType,
+                userId,
+                repurposed: {
+                  create: repurposedContent.map(item => ({
+                    platform: item.platform,
+                    content: item.content
+                  }))
+                }
+              },
+              include: {
+                repurposed: true
               }
-            },
-            include: {
-              repurposed: true
-            }
+            });
           });
         } else {
           // Use raw SQL approach as fallback
           const contentId = generateId();
           
           // Insert into Content table
-          await prisma.$executeRawUnsafe(`
-            INSERT INTO "Content" ("id", "title", "originalContent", "contentType", "userId", "createdAt", "updatedAt")
-            VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-          `, contentId, title, content, contentType, userId);
+          await withPrisma(async (prisma) => {
+            await prisma.$executeRawUnsafe(`
+              INSERT INTO "Content" ("id", "title", "originalContent", "contentType", "userId", "createdAt", "updatedAt")
+              VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+            `, contentId, title, content, contentType, userId);
+          });
           
           // Insert each repurposed content
           for (const item of repurposedContent) {
-            await prisma.$executeRawUnsafe(`
-              INSERT INTO "RepurposedContent" ("id", "platform", "content", "contentId", "createdAt", "updatedAt")
-              VALUES ($1, $2, $3, $4, NOW(), NOW())
-            `, generateId(), item.platform, item.content, contentId);
+            await withPrisma(async (prisma) => {
+              await prisma.$executeRawUnsafe(`
+                INSERT INTO "RepurposedContent" ("id", "platform", "content", "contentId", "createdAt", "updatedAt")
+                VALUES ($1, $2, $3, $4, NOW(), NOW())
+              `, generateId(), item.platform, item.content, contentId);
+            });
           }
           
           // Construct result object

@@ -1,7 +1,7 @@
 import { Toaster } from 'react-hot-toast'
 import { Toaster as SonnerToaster } from 'sonner'
 import './globals.css'
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Outfit, Raleway } from 'next/font/google'
 import NextAuthProvider from '@/components/providers/NextAuthProvider'
 import { validateEnvVars } from '@/lib/config'
@@ -27,8 +27,6 @@ const raleway = Raleway({
 export const metadata: Metadata = {
   title: 'AI Content Repurposer Studio',
   description: 'Transform your content into multiple formats using AI',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=5',
-  themeColor: '#3B82F6',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -37,6 +35,13 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: '#3B82F6',
 }
 
 export default function RootLayout({
