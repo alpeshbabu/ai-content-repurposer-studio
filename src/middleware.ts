@@ -1,62 +1,58 @@
-// src/middleware.ts
-// (Delete all contents or the file itself) 
-
 import { NextRequest, NextResponse } from "next/server"
-import { createRateLimit, getSecurityHeaders, validateRequest, getClientIP } from '@/lib/security'
-import { logger, LogCategory } from '@/lib/logger'
 
-// Rate limiting configurations for different endpoints (enterprise-friendly)
-const authRateLimit = createRateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 10 // 10 attempts per window (increased for better UX)
-})
+// Rate limiting store (simple in-memory for Vercel)
+const rateLimit = new Map<string, { count: number; resetTime: number }>()
 
-const apiRateLimit = createRateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  maxRequests: 200 // 200 requests per minute (increased for enterprise load)
-})
+function createRateLimit(windowMs: number, maxRequests: number) {
+  return (req: NextRequest) => {
+    const ip = req.ip || req.headers.get('x-forwarded-for') || 'unknown'
+    const key = `${ip}:${req.nextUrl.pathname}`
+    const now = Date.now()
+    
+    const current = rateLimit.get(key)
+    
+    if (!current || now > current.resetTime) {
+      rateLimit.set(key, { count: 1, resetTime: now + windowMs })
+      return { allowed: true, remaining: maxRequests - 1, resetTime: now + windowMs }
+    }
+    
+    if (current.count >= maxRequests) {
+      return { allowed: false, remaining: 0, resetTime: current.resetTime }
+    }
+    
+    current.count++
+    return { allowed: true, remaining: maxRequests - current.count, resetTime: current.resetTime }
+  }
+}
 
-const adminRateLimit = createRateLimit({
-  windowMs: 60 * 1000, // 1 minute (shorter window)
-  maxRequests: 100 // 100 requests per minute (much more reasonable for admin operations)
-})
+// Rate limiting configurations
+const authRateLimit = createRateLimit(15 * 60 * 1000, 10) // 10 attempts per 15 minutes
+const apiRateLimit = createRateLimit(60 * 1000, 200) // 200 requests per minute
+const adminRateLimit = createRateLimit(60 * 1000, 100) // 100 requests per minute
 
-// Enhanced middleware with security and monitoring
-function enhancedMiddleware(req: NextRequest) {
-  const startTime = Date.now()
-  const ip = getClientIP(req)
+// Security headers
+function getSecurityHeaders() {
+  return {
+    'X-Frame-Options': 'DENY',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'origin-when-cross-origin',
+    'X-XSS-Protection': '1; mode=block',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  }
+}
+
+export default function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
-
-  // Log incoming request
-  logger.info(`Incoming request: ${req.method} ${pathname}`, {
-    ip,
-    userAgent: req.headers.get('user-agent'),
-    referer: req.headers.get('referer')
-  }, LogCategory.API)
+  
+  // Skip middleware for static files and Next.js internals
+  if (pathname.startsWith('/_next') || 
+      pathname.startsWith('/favicon') ||
+      pathname.includes('.')) {
+    return NextResponse.next()
+  }
 
   try {
-    // Basic request validation
-    const validation = validateRequest(req)
-    if (!validation.valid) {
-      logger.security(`Request validation failed: ${validation.errors.join(', ')}`, {
-        ip,
-        pathname,
-        errors: validation.errors
-      })
-      
-      const response = NextResponse.json(
-        { error: 'Invalid request', details: validation.errors },
-        { status: 400 }
-      )
-      
-      // Add security headers
-      Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
-        response.headers.set(key, value)
-      })
-      
-      return response
-    }
-
     // Apply rate limiting based on route
     let rateLimitResult
     
@@ -64,12 +60,6 @@ function enhancedMiddleware(req: NextRequest) {
       rateLimitResult = authRateLimit(req)
       
       if (!rateLimitResult.allowed) {
-        logger.security(`Authentication rate limit exceeded`, {
-          ip,
-          pathname,
-          remaining: rateLimitResult.remaining
-        })
-        
         const response = NextResponse.json(
           { 
             error: 'Too many authentication attempts', 
@@ -79,7 +69,7 @@ function enhancedMiddleware(req: NextRequest) {
         )
         
         response.headers.set('Retry-After', Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000).toString())
-        response.headers.set('X-RateLimit-Limit', '5')
+        response.headers.set('X-RateLimit-Limit', '10')
         response.headers.set('X-RateLimit-Remaining', '0')
         response.headers.set('X-RateLimit-Reset', rateLimitResult.resetTime.toString())
         
@@ -89,12 +79,6 @@ function enhancedMiddleware(req: NextRequest) {
       rateLimitResult = adminRateLimit(req)
       
       if (!rateLimitResult.allowed) {
-        logger.security(`Admin API rate limit exceeded`, {
-          ip,
-          pathname,
-          remaining: rateLimitResult.remaining
-        })
-        
         const response = NextResponse.json(
           { 
             error: 'Too many admin requests', 
@@ -110,12 +94,6 @@ function enhancedMiddleware(req: NextRequest) {
       rateLimitResult = apiRateLimit(req)
       
       if (!rateLimitResult.allowed) {
-        logger.security(`API rate limit exceeded`, {
-          ip,
-          pathname,
-          remaining: rateLimitResult.remaining
-        })
-        
         const response = NextResponse.json(
           { 
             error: 'Rate limit exceeded', 
@@ -125,7 +103,7 @@ function enhancedMiddleware(req: NextRequest) {
         )
         
         response.headers.set('Retry-After', Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000).toString())
-        response.headers.set('X-RateLimit-Limit', '100')
+        response.headers.set('X-RateLimit-Limit', '200')
         response.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString())
         response.headers.set('X-RateLimit-Reset', rateLimitResult.resetTime.toString())
         
@@ -133,10 +111,10 @@ function enhancedMiddleware(req: NextRequest) {
       }
     }
 
-    // Security headers for all responses
+    // Continue with the request
     const response = NextResponse.next()
     
-    // Add comprehensive security headers
+    // Add security headers
     Object.entries(getSecurityHeaders()).forEach(([key, value]) => {
       response.headers.set(key, value)
     })
@@ -151,24 +129,10 @@ function enhancedMiddleware(req: NextRequest) {
     const requestId = Math.random().toString(36).substring(2, 15)
     response.headers.set('X-Request-ID', requestId)
 
-    // Log performance
-    const duration = Date.now() - startTime
-    if (duration > 1000) { // Log slow requests
-      logger.warn(`Slow request detected: ${req.method} ${pathname}`, {
-        duration,
-        ip,
-        requestId
-      }, LogCategory.PERFORMANCE)
-    }
-
     return response
 
   } catch (error) {
-    logger.error(`Middleware error for ${pathname}`, error as Error, {
-      ip,
-      pathname,
-      method: req.method
-    })
+    console.error('Middleware error:', error)
     
     const response = NextResponse.json(
       { error: 'Internal server error' },
@@ -182,21 +146,6 @@ function enhancedMiddleware(req: NextRequest) {
     
     return response
   }
-}
-
-// Simplified middleware without NextAuth dependency for better performance
-export default function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl
-  
-  // Skip middleware for static files and Next.js internals
-  if (pathname.startsWith('/_next') || 
-      pathname.startsWith('/favicon') ||
-      pathname.includes('.')) {
-    return NextResponse.next()
-  }
-  
-  // Apply enhanced middleware for API routes and protected pages
-  return enhancedMiddleware(req)
 }
 
 export const config = {

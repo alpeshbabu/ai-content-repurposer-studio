@@ -112,7 +112,7 @@ Performance, testing, and deployment
 - [ ] **test-2**: Frontend: Write component tests for critical user flows
 
 #### Deployment
-- [ ] **deploy-1**: DevOps: Set up Vercel deployment configuration
+- [ ] **deploy-1**: DevOps: Set up hostinger deployment configuration
 - [ ] **deploy-2**: DevOps: Configure environment variables for production
 
 ---

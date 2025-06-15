@@ -39,7 +39,7 @@ export default function ContentRepurposingForm() {
   const [tone, setTone] = useState('professional');
   const [targetAudience, setTargetAudience] = useState('');
   const [contentType, setContentType] = useState<ContentType>('blog');
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['twitter', 'linkedin']);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<RepurposedItem[]>([]);
   const [usageData, setUsageData] = useState<UsageData | null>(null);
@@ -79,6 +79,35 @@ export default function ContentRepurposingForm() {
     
     checkSystemHealth();
   }, []);
+
+  // Fetch user settings for preferred platforms
+  useEffect(() => {
+    if (!databaseSetupComplete) return;
+    
+    async function fetchUserSettings() {
+      try {
+        const response = await fetch('/api/settings');
+        if (response.ok) {
+          const settings = await response.json();
+          if (settings?.preferredPlatforms && settings.preferredPlatforms.length > 0) {
+            setSelectedPlatforms(settings.preferredPlatforms);
+          } else {
+            // Default platforms if none are set
+            setSelectedPlatforms(['twitter', 'linkedin']);
+          }
+        } else {
+          // Default platforms if settings fetch fails
+          setSelectedPlatforms(['twitter', 'linkedin']);
+        }
+      } catch (error) {
+        console.error('Error fetching user settings:', error);
+        // Default platforms on error
+        setSelectedPlatforms(['twitter', 'linkedin']);
+      }
+    }
+    
+    fetchUserSettings();
+  }, [databaseSetupComplete]);
 
   // Fetch usage data once database setup is complete
   useEffect(() => {
@@ -256,7 +285,7 @@ export default function ContentRepurposingForm() {
             title: title || 'Generated Content',
             content: data.data.content,
             contentType: contentType || 'general',
-            platforms: selectedPlatforms.length > 0 ? selectedPlatforms : ['twitter', 'linkedin'],
+            platforms: selectedPlatforms,
             tone,
             targetAudience,
             brandVoice: '',
@@ -588,42 +617,25 @@ export default function ContentRepurposingForm() {
           </div>
         )}
 
-        {/* Platform Selection */}
-        <div className="space-y-2">
-          <label className="block text-sm font-semibold text-gray-900">
-            Target Platforms
-          </label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {['twitter', 'linkedin', 'instagram', 'facebook', 'email', 'newsletter', 'thread', 'general'].map((platform) => (
-              <label
-                key={platform}
-                className="flex items-center space-x-2 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  value={platform}
-                  checked={selectedPlatforms.includes(platform)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedPlatforms([...selectedPlatforms, platform]);
-                    } else {
-                      setSelectedPlatforms(selectedPlatforms.filter(p => p !== platform));
-                    }
-                  }}
-                  disabled={loading}
-                  className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                />
-                <span className="text-sm font-medium text-gray-700 capitalize">
-                  {platform === 'thread' ? 'Twitter Thread' : platform}
-                </span>
-              </label>
-            ))}
+        {/* Platform Notice */}
+        {selectedPlatforms.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm text-blue-900">
+                  Your content will be repurposed for: <span className="font-medium">{selectedPlatforms.map(p => p === 'thread' ? 'Twitter Thread' : p.charAt(0).toUpperCase() + p.slice(1)).join(', ')}</span>
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  To change your preferred platforms, visit your{' '}
+                  <Link href="/dashboard/settings" className="font-medium underline hover:text-blue-800">
+                    settings page
+                  </Link>
+                </p>
+              </div>
+            </div>
           </div>
-          <p className="text-xs text-gray-500 flex items-center space-x-1 mt-1">
-            <Info className="h-3 w-3" />
-            <span>Select the platforms you want to repurpose your content for</span>
-          </p>
-        </div>
+        )}
 
         {/* Submit Button */}
         <div className="flex justify-center pt-4">
