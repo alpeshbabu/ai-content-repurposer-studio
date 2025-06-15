@@ -1,15 +1,25 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+// Dynamic runtime to avoid build-time issues
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     const startTime = Date.now();
     
-    // Check database connection
-    const dbCheck = await prisma.$queryRaw`SELECT 1`;
-    const dbLatency = Date.now() - startTime;
+    // Dynamically import Prisma to avoid build-time issues
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    
+    let dbCheck, dbLatency;
+    try {
+      // Check database connection
+      dbCheck = await prisma.$queryRaw`SELECT 1`;
+      dbLatency = Date.now() - startTime;
+    } finally {
+      await prisma.$disconnect();
+    }
     
     // Check environment variables
     const requiredEnvVars = [
@@ -78,20 +88,24 @@ export async function GET() {
         },
       }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }
 
 // Also support HEAD requests for simple alive checks
 export async function HEAD() {
   try {
-    // Quick database ping
-    await prisma.$queryRaw`SELECT 1`;
-    return new NextResponse(null, { status: 200 });
+    // Dynamically import Prisma to avoid build-time issues
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    
+    try {
+      // Quick database ping
+      await prisma.$queryRaw`SELECT 1`;
+      return new NextResponse(null, { status: 200 });
+    } finally {
+      await prisma.$disconnect();
+    }
   } catch {
     return new NextResponse(null, { status: 503 });
-  } finally {
-    await prisma.$disconnect();
   }
 }

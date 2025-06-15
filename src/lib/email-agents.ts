@@ -219,7 +219,11 @@ async function sendWithSendGrid(data: TeamInvitationEmailData): Promise<EmailRes
 
   try {
     // Dynamic import to avoid errors if SendGrid isn't installed
-    const sgMail = await import('@sendgrid/mail');
+    const sgMail = await import('@sendgrid/mail').catch(() => null);
+    if (!sgMail) {
+      return { success: false, error: 'SendGrid package not installed', provider: 'sendgrid' };
+    }
+    
     sgMail.default.setApiKey(process.env.SENDGRID_API_KEY);
 
     const { htmlContent, textContent } = getEmailTemplate(data);
@@ -251,8 +255,14 @@ async function sendWithMailgun(data: TeamInvitationEmailData): Promise<EmailResu
 
   try {
     // Dynamic import to avoid errors if Mailgun isn't installed
-    const formData = await import('form-data');
-    const Mailgun = await import('mailgun.js');
+    const [formData, Mailgun] = await Promise.all([
+      import('form-data').catch(() => null),
+      import('mailgun.js').catch(() => null)
+    ]);
+    
+    if (!formData || !Mailgun) {
+      return { success: false, error: 'Mailgun packages not installed', provider: 'mailgun' };
+    }
     
     const mailgun = new Mailgun.default(formData.default);
     const mg = mailgun.client({
@@ -288,7 +298,12 @@ async function sendWithAWSSES(data: TeamInvitationEmailData): Promise<EmailResul
 
   try {
     // Dynamic import to avoid errors if AWS SDK isn't installed
-    const { SESClient, SendEmailCommand } = await import('@aws-sdk/client-ses');
+    const awsSES = await import('@aws-sdk/client-ses').catch(() => null);
+    if (!awsSES) {
+      return { success: false, error: 'AWS SES package not installed', provider: 'aws-ses' };
+    }
+    
+    const { SESClient, SendEmailCommand } = awsSES;
 
     const sesClient = new SESClient({
       region: process.env.AWS_REGION,

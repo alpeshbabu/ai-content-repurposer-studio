@@ -156,7 +156,7 @@ describe('Testing Infrastructure Summary', () => {
       ]
     }
     
-    Object.entries(userFlows).forEach(([flow, steps]) => {
+    Object.entries(userFlows).forEach(([, steps]) => {
       expect(steps.length).toBeGreaterThan(3) // Each flow has multiple steps
       expect(steps.every(step => typeof step === 'string')).toBe(true)
     })
