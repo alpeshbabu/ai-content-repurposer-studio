@@ -47,7 +47,7 @@ export default function ContentRepurposingForm() {
   const [allowOverage, setAllowOverage] = useState(false);
   const [usageLimitReached, setUsageLimitReached] = useState(false);
   const [loadingUsage, setLoadingUsage] = useState(true);
-  const [databaseSetupComplete, setDatabaseSetupComplete] = useState(false);
+  const [databaseSetupComplete, setDatabaseSetupComplete] = useState(true); // Default to true for better UX
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   // Check system health and database readiness
@@ -92,17 +92,17 @@ export default function ContentRepurposingForm() {
           if (settings?.preferredPlatforms && settings.preferredPlatforms.length > 0) {
             setSelectedPlatforms(settings.preferredPlatforms);
           } else {
-            // Default platforms if none are set
-            setSelectedPlatforms(['twitter', 'linkedin']);
+            // Default platforms for free tier only - STRICT COMPLIANCE
+            setSelectedPlatforms(['twitter', 'instagram']);
           }
         } else {
-          // Default platforms if settings fetch fails
-          setSelectedPlatforms(['twitter', 'linkedin']);
+          // Default platforms for free tier only - STRICT COMPLIANCE  
+          setSelectedPlatforms(['twitter', 'instagram']);
         }
       } catch (error) {
         console.error('Error fetching user settings:', error);
-        // Default platforms on error
-        setSelectedPlatforms(['twitter', 'linkedin']);
+        // Default platforms for free tier only - STRICT COMPLIANCE
+        setSelectedPlatforms(['twitter', 'instagram']);
       }
     }
     
@@ -178,27 +178,35 @@ export default function ContentRepurposingForm() {
     // Check if system is ready
     if (!databaseSetupComplete) {
       try {
-        notifications.loading('Checking system status...');
-        const healthResponse = await fetch('/api/system/health');
-        notifications.dismiss();
+        notifications.loading('Initializing system...');
         
-        if (!healthResponse.ok) {
-          notifications.error('System is still initializing. Please try again in a few moments.');
-          return;
+        try {
+          // Try simple health check first with timeout
+          const healthResponse = await fetch('/api/health/simple', {
+            signal: AbortSignal.timeout(5000) // 5 second timeout
+          });
+          const healthData = await healthResponse.json();
+          
+          notifications.dismiss();
+          
+          if (healthResponse.ok && healthData.status === 'healthy') {
+            setDatabaseSetupComplete(true);
+          } else {
+            console.warn('Health check returned unhealthy status, proceeding with caution');
+            notifications.warning('System may be initializing. If you encounter issues, please wait a moment and try again.');
+            setDatabaseSetupComplete(true);
+          }
+        } catch (error) {
+          console.warn('Health check failed, proceeding anyway:', error);
+          notifications.dismiss();
+          // Don't block the user - the actual API calls will handle errors appropriately
+          setDatabaseSetupComplete(true);
         }
-        
-        const healthData = await healthResponse.json();
-        if (healthData.status === 'unhealthy') {
-          notifications.error('System is currently unhealthy. Please try again in a few moments.');
-          return;
-        }
-        
-        setDatabaseSetupComplete(true);
       } catch (error) {
         console.error('Error checking system status:', error);
         notifications.dismiss();
-        notifications.error('System status check failed. Please try again later.');
-        return;
+        // Don't block the user - proceed with caution
+        setDatabaseSetupComplete(true);
       }
     }
 

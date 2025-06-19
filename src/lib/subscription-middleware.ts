@@ -160,12 +160,12 @@ export async function checkUsageLimit(userId: string): Promise<{
   const plan = user.subscriptionPlan || 'free';
   const usage = user.usageThisMonth || 0;
   
-  // Define limits per plan
+  // Define limits per plan - MUST match SUBSCRIPTION.md exactly
   const limits = {
     free: 5,
     basic: 60,
     pro: 150,
-    agency: -1, // unlimited
+    agency: 450, // Changed from -1 to 450 per SUBSCRIPTION.md
   };
 
   const overageRates = {
@@ -178,16 +178,8 @@ export async function checkUsageLimit(userId: string): Promise<{
   const limit = limits[plan as keyof typeof limits] || 5;
   const overageRate = overageRates[plan as keyof typeof overageRates] || 0.12;
   
-  // Unlimited plans
-  if (limit === -1) {
-    return {
-      canUse: true,
-      usage,
-      limit: -1,
-      plan,
-      overageRate,
-    };
-  }
+  // Agency plan has the highest limit but is not unlimited
+  // All plans have limits per SUBSCRIPTION.md
 
   return {
     canUse: usage < limit,

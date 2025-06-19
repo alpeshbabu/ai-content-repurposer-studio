@@ -22,7 +22,7 @@ const allPlatforms = [
   'thread',
 ]
 
-// Define platform availability by subscription tier
+// Define platform availability by subscription tier - MUST match SUBSCRIPTION.md
 const getPlatformsByTier = (plan: string) => {
   switch (plan) {
     case 'free':
@@ -30,7 +30,7 @@ const getPlatformsByTier = (plan: string) => {
     case 'basic':
       return ['twitter', 'instagram', 'facebook']
     case 'pro':
-      return ['twitter', 'instagram', 'facebook', 'linkedin']
+      return ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'email', 'newsletter']
     case 'agency':
       return ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'email', 'newsletter']
     default:

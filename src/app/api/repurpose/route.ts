@@ -295,6 +295,7 @@ export async function POST(req: Request) {
       
       console.log('🔄 PLATFORM FILTERING - Input plan:', plan);
       
+      // STRICT PLATFORM ENFORCEMENT - Must match SUBSCRIPTION.md exactly
       switch (plan) {
         case 'free':
           availablePlatforms = ['twitter', 'instagram'];
@@ -303,14 +304,14 @@ export async function POST(req: Request) {
           availablePlatforms = ['twitter', 'instagram', 'facebook'];
           break;
         case 'pro':
-          availablePlatforms = ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'email', 'newsletter', 'youtube', 'tiktok'];
+          availablePlatforms = ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'email', 'newsletter'];
           break;
         case 'agency':
-          availablePlatforms = ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'email', 'newsletter', 'youtube', 'tiktok'];
+          availablePlatforms = ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'email', 'newsletter'];
           break;
         default:
           console.log('⚠️  PLAN FELL THROUGH TO DEFAULT - Plan value:', plan);
-          availablePlatforms = ['twitter', 'instagram'];
+          availablePlatforms = ['twitter', 'instagram']; // Default to free tier only
       }
       
       console.log('🎯 PLATFORM FILTERING - Result:', {

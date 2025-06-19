@@ -11,12 +11,12 @@ export interface UsageInfo {
   isDailyExceeded?: boolean
 }
 
-// Monthly limits
+// Monthly limits - MUST match SUBSCRIPTION.md exactly
 export const SUBSCRIPTION_LIMITS = {
   free: 5,
-  basic: 60, // 2 per day for 30 days
-  pro: 150,  // 5 per day for 30 days
-  agency: 450 // 15 per day for 30 days
+  basic: 60,
+  pro: 150,
+  agency: 450
 }
 
 // Daily limits
