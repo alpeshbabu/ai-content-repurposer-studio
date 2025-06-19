@@ -1,17 +1,19 @@
-import { prisma } from './prisma';
+import { getPrismaClient, withPrisma } from './prisma-dynamic';
 
 /**
  * Check if a specific table exists in the database
  */
 export async function tableExists(tableName: string): Promise<boolean> {
   try {
-    const result = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = $1
-      )`,
-      tableName
+    const result = await withPrisma(async (prisma) => 
+      await prisma.$queryRawUnsafe<any[]>(
+        `SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = $1
+        )`,
+        tableName
+      )
     );
     
     return result && result[0] && result[0].exists;
@@ -38,24 +40,28 @@ export async function ensureContentTableExists(): Promise<boolean> {
     if (exists) return true;
     
     // Create the Content table - execute statements one at a time
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "Content" (
-        "id" TEXT NOT NULL,
-        "title" TEXT NOT NULL,
-        "originalContent" TEXT NOT NULL,
-        "contentType" TEXT NOT NULL,
-        "userId" TEXT NOT NULL,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        
-        CONSTRAINT "Content_pkey" PRIMARY KEY ("id")
-      )
-    `);
+    await withPrisma(async (prisma) => 
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "Content" (
+          "id" TEXT NOT NULL,
+          "title" TEXT NOT NULL,
+          "originalContent" TEXT NOT NULL,
+          "contentType" TEXT NOT NULL,
+          "userId" TEXT NOT NULL,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          
+          CONSTRAINT "Content_pkey" PRIMARY KEY ("id")
+        )
+      `)
+    );
     
     // Create index in a separate statement
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "Content_userId_idx" ON "Content"("userId")
-    `);
+    await withPrisma(async (prisma) =>
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS "Content_userId_idx" ON "Content"("userId")
+      `)
+    );
     
     return true;
   } catch (error) {
@@ -73,23 +79,27 @@ export async function ensureRepurposedContentTableExists(): Promise<boolean> {
     if (exists) return true;
     
     // Create the RepurposedContent table - execute statements one at a time
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "RepurposedContent" (
-        "id" TEXT NOT NULL,
-        "platform" TEXT NOT NULL,
-        "content" TEXT NOT NULL,
-        "contentId" TEXT NOT NULL,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        
-        CONSTRAINT "RepurposedContent_pkey" PRIMARY KEY ("id")
-      )
-    `);
+    await withPrisma(async (prisma) =>
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "RepurposedContent" (
+          "id" TEXT NOT NULL,
+          "platform" TEXT NOT NULL,
+          "content" TEXT NOT NULL,
+          "contentId" TEXT NOT NULL,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          
+          CONSTRAINT "RepurposedContent_pkey" PRIMARY KEY ("id")
+        )
+      `)
+    );
     
     // Create index in a separate statement
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "RepurposedContent_contentId_idx" ON "RepurposedContent"("contentId")
-    `);
+    await withPrisma(async (prisma) =>
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS "RepurposedContent_contentId_idx" ON "RepurposedContent"("contentId")
+      `)
+    );
     
     return true;
   } catch (error) {
@@ -107,24 +117,28 @@ export async function ensureDailyUsageTableExists(): Promise<boolean> {
     if (exists) return true;
     
     // Create the DailyUsage table - execute statements one at a time
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "DailyUsage" (
-        "id" TEXT NOT NULL,
-        "userId" TEXT NOT NULL,
-        "date" TIMESTAMP(3) NOT NULL,
-        "count" INTEGER NOT NULL DEFAULT 0,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        
-        CONSTRAINT "DailyUsage_pkey" PRIMARY KEY ("id"),
-        CONSTRAINT "DailyUsage_userId_date_key" UNIQUE ("userId", "date")
-      )
-    `);
+    await withPrisma(async (prisma) =>
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "DailyUsage" (
+          "id" TEXT NOT NULL,
+          "userId" TEXT NOT NULL,
+          "date" TIMESTAMP(3) NOT NULL,
+          "count" INTEGER NOT NULL DEFAULT 0,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          
+          CONSTRAINT "DailyUsage_pkey" PRIMARY KEY ("id"),
+          CONSTRAINT "DailyUsage_userId_date_key" UNIQUE ("userId", "date")
+        )
+      `)
+    );
     
     // Create index in a separate statement
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "DailyUsage_userId_idx" ON "DailyUsage"("userId")
-    `);
+    await withPrisma(async (prisma) =>
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS "DailyUsage_userId_idx" ON "DailyUsage"("userId")
+      `)
+    );
     
     return true;
   } catch (error) {
@@ -142,24 +156,28 @@ export async function ensureOverageChargeTableExists(): Promise<boolean> {
     if (exists) return true;
     
     // Create the OverageCharge table - execute statements one at a time
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "OverageCharge" (
-        "id" TEXT NOT NULL,
-        "userId" TEXT NOT NULL,
-        "amount" DOUBLE PRECISION NOT NULL,
-        "count" INTEGER NOT NULL,
-        "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "status" TEXT NOT NULL DEFAULT 'pending',
-        "invoiceId" TEXT,
-        
-        CONSTRAINT "OverageCharge_pkey" PRIMARY KEY ("id")
-      )
-    `);
+    await withPrisma(async (prisma) =>
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "OverageCharge" (
+          "id" TEXT NOT NULL,
+          "userId" TEXT NOT NULL,
+          "amount" DOUBLE PRECISION NOT NULL,
+          "count" INTEGER NOT NULL,
+          "date" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "status" TEXT NOT NULL DEFAULT 'pending',
+          "invoiceId" TEXT,
+          
+          CONSTRAINT "OverageCharge_pkey" PRIMARY KEY ("id")
+        )
+      `)
+    );
     
     // Create index in a separate statement
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "OverageCharge_userId_date_idx" ON "OverageCharge"("userId", "date")
-    `);
+    await withPrisma(async (prisma) =>
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS "OverageCharge_userId_date_idx" ON "OverageCharge"("userId", "date")
+      `)
+    );
     
     return true;
   } catch (error) {
@@ -178,12 +196,14 @@ export async function validateUserTable(): Promise<boolean> {
     if (!userExists) return false;
     
     // Check if User table has the required columns
-    const result = await prisma.$queryRawUnsafe<any[]>(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_schema = 'public' 
-      AND table_name = 'User'
-    `);
+    const result = await withPrisma(async (prisma) =>
+      await prisma.$queryRawUnsafe<any[]>(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'User'
+      `)
+    );
     
     const columns = result.map(r => r.column_name.toLowerCase());
     const requiredColumns = [

@@ -22,11 +22,11 @@ const repurposeContentSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   content: z.string().min(1, 'Content is required'),
   contentType: z.string().min(1, 'Content type is required'),
-  platforms: z.array(z.enum(['twitter', 'linkedin', 'instagram', 'facebook', 'email', 'newsletter', 'thread', 'general'])).optional(),
+  platforms: z.array(z.enum(['twitter', 'linkedin', 'instagram', 'facebook', 'email', 'newsletter', 'thread', 'youtube', 'tiktok', 'general'])).optional(),
   brandVoice: z.string().optional(),
   tone: z.string().optional(),
   additionalInstructions: z.string().optional(),
-  provider: z.enum(['anthropic', 'groq']).optional(),
+  provider: z.enum(['anthropic', 'llama']).optional(),
   model: z.string().optional(),
   allowOverage: z.boolean().default(false)
 });
@@ -37,7 +37,13 @@ export async function POST(req: Request) {
     const userId = session?.user?.id
     
     if (!userId) {
-      return new NextResponse('Unauthorized', { status: 401 })
+      return new NextResponse(
+        JSON.stringify({ error: 'Unauthorized' }), 
+        { 
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      )
     }
 
     // Parse and validate request body
@@ -45,7 +51,13 @@ export async function POST(req: Request) {
     try {
       body = await req.json();
     } catch (error) {
-      return new NextResponse('Invalid JSON', { status: 400 });
+      return new NextResponse(
+        JSON.stringify({ error: 'Invalid JSON' }), 
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
     }
 
     const validation = repurposeContentSchema.safeParse(body);
@@ -79,12 +91,19 @@ export async function POST(req: Request) {
     const userTableValid = await validateUserTable();
     if (!userTableValid) {
       console.error('User table does not exist or is invalid');
-      return new NextResponse('Database initialization in progress. Please try again in a few moments.', { 
-        status: 503,
-        headers: {
-          'X-Error-Type': 'database-not-ready'
+      return new NextResponse(
+        JSON.stringify({ 
+          error: 'Database initialization in progress', 
+          message: 'Please try again in a few moments.' 
+        }), 
+        { 
+          status: 503,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Error-Type': 'database-not-ready'
+          }
         }
-      });
+      );
     }
 
     // Ensure content tables exist
@@ -107,6 +126,8 @@ export async function POST(req: Request) {
               subscriptionPlan: true,
               subscriptionStatus: true,
               usageThisMonth: true,
+              overageConsent: true,
+              overageConsentDate: true,
               subscriptions: {
                 where: { 
                   status: { in: ['active', 'trialing'] }
@@ -124,17 +145,32 @@ export async function POST(req: Request) {
           subscriptionPlan: 'free',
           subscriptionStatus: 'inactive',
           usageThisMonth: 0,
+          overageConsent: false,
+          overageConsentDate: null,
           subscriptions: []
         };
       }
       
       if (!user) {
-        return new NextResponse('User not found', { status: 404 });
+        return new NextResponse(
+          JSON.stringify({ error: 'User not found' }), 
+          { 
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
       }
 
       // Check if user has access to their current plan
       const plan = user.subscriptionPlan as SubscriptionPlan;
       const hasActiveSubscription = user.subscriptionStatus === 'active' || user.subscriptions.length > 0;
+      
+      console.log('🧑‍💼 USER PLAN DEBUG:', {
+        subscriptionPlan: user.subscriptionPlan,
+        subscriptionStatus: user.subscriptionStatus,
+        hasActiveSubscription,
+        actualPlan: plan
+      });
       
       // For paid plans, require active subscription
       if (plan !== 'free' && !hasActiveSubscription) {
@@ -194,15 +230,28 @@ export async function POST(req: Request) {
         }
       }
       
+      // Check if user has overage consent and automatically allow overage if they do
+      const hasOverageConsent = user.overageConsent === true;
+      const shouldAllowOverage = allowOverage || hasOverageConsent;
+
       // If either limit is exceeded and overage is not allowed, return 402
-      if ((isMonthlyExceeded || isDailyExceeded) && !allowOverage) {
+      if ((isMonthlyExceeded || isDailyExceeded) && !shouldAllowOverage) {
         return new NextResponse(
-          isMonthlyExceeded 
-            ? 'Monthly usage limit exceeded. Please upgrade your plan or enable overage charges.' 
-            : 'Daily usage limit exceeded. Please upgrade your plan or try again tomorrow.', 
+          JSON.stringify({
+            error: 'Usage limit exceeded',
+            message: isMonthlyExceeded 
+              ? 'Monthly usage limit exceeded. Please upgrade your plan or enable overage charges.' 
+              : 'Daily usage limit exceeded. Please upgrade your plan or try again tomorrow.',
+            limitType: isMonthlyExceeded ? 'monthly' : 'daily',
+            currentUsage: user.usageThisMonth,
+            limit: monthlyLimit,
+            plan: plan,
+            hasOverageConsent: hasOverageConsent
+          }),
           { 
             status: 402, // Payment Required
             headers: {
+              'Content-Type': 'application/json',
               'X-Subscription-Required': 'true',
               'X-Allow-Overage': 'true',
               'X-Limit-Type': isMonthlyExceeded ? 'monthly' : 'daily'
@@ -212,7 +261,7 @@ export async function POST(req: Request) {
       }
       
       // If limit is exceeded but overage is allowed, record the charge
-      if ((isMonthlyExceeded || isDailyExceeded) && allowOverage) {
+      if ((isMonthlyExceeded || isDailyExceeded) && shouldAllowOverage) {
         // Check if OverageCharge table exists
         const overageChargeTableExists = await tableExists('OverageCharge');
         if (overageChargeTableExists) {
@@ -244,6 +293,8 @@ export async function POST(req: Request) {
       // Filter platforms based on the user's subscription plan
       let availablePlatforms: Platform[] = [];
       
+      console.log('🔄 PLATFORM FILTERING - Input plan:', plan);
+      
       switch (plan) {
         case 'free':
           availablePlatforms = ['twitter', 'instagram'];
@@ -252,14 +303,20 @@ export async function POST(req: Request) {
           availablePlatforms = ['twitter', 'instagram', 'facebook'];
           break;
         case 'pro':
-          availablePlatforms = ['twitter', 'instagram', 'facebook', 'linkedin'];
+          availablePlatforms = ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'email', 'newsletter', 'youtube', 'tiktok'];
           break;
         case 'agency':
-          availablePlatforms = ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'email', 'newsletter'];
+          availablePlatforms = ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'email', 'newsletter', 'youtube', 'tiktok'];
           break;
         default:
+          console.log('⚠️  PLAN FELL THROUGH TO DEFAULT - Plan value:', plan);
           availablePlatforms = ['twitter', 'instagram'];
       }
+      
+      console.log('🎯 PLATFORM FILTERING - Result:', {
+        plan,
+        availablePlatforms
+      });
       
       // Get platforms to use: either from request, user preferences, or default available platforms
       const platformsToUse = platforms && platforms.length > 0
@@ -267,6 +324,28 @@ export async function POST(req: Request) {
         : preferredPlatforms.length 
           ? preferredPlatforms.filter(p => availablePlatforms.includes(p as Platform)) as Platform[]
           : availablePlatforms;
+
+      console.log('Debug - platforms from request:', platforms);
+      console.log('Debug - preferredPlatforms:', preferredPlatforms);
+      console.log('Debug - availablePlatforms:', availablePlatforms);
+      console.log('Debug - platformsToUse:', platformsToUse);
+      console.log('🔍 ABOUT TO CALL AI SERVICE WITH PLATFORMS:', platformsToUse);
+
+      // Ensure we have at least one platform
+      if (!platformsToUse || platformsToUse.length === 0) {
+        return new NextResponse(
+          JSON.stringify({
+            error: 'No platforms available',
+            message: 'No platforms are available for your subscription plan or no platforms were selected.',
+            availablePlatforms,
+            plan
+          }),
+          { 
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
 
       // Check available AI providers
       const availableProviders = aiService.getAvailableProviders();
@@ -283,13 +362,12 @@ export async function POST(req: Request) {
         );
       }
 
-      // Validate provider selection
-      const selectedProvider = provider || availableProviders[0];
-      if (!aiService.isProviderAvailable(selectedProvider as AIProvider)) {
+      // Validate provider selection (if explicitly provided)
+      if (provider && !aiService.isProviderAvailable(provider as AIProvider)) {
         return new NextResponse(
           JSON.stringify({
             error: 'Provider unavailable',
-            message: `The ${selectedProvider} provider is not available. Available providers: ${availableProviders.join(', ')}`
+            message: `The ${provider} provider is not available. Available providers: ${availableProviders.join(', ')}`
           }),
           { 
             status: 400,
@@ -304,19 +382,71 @@ export async function POST(req: Request) {
         platforms: platformsToUse,
         brandVoice: userBrandVoice,
         tone,
-        additionalInstructions
+        additionalInstructions,
+        userId
       };
 
       const aiConfig = {
-        provider: selectedProvider as AIProvider,
+        ...(provider && { provider: provider as AIProvider }),
         ...(model && { model })
       };
+
+      // Debug logging before AI service call
+      console.log('=== AI SERVICE DEBUG START ===');
+      console.log('1. Platforms being passed to aiService.repurposeContent:', JSON.stringify(platformsToUse));
+      console.log('2. Complete repurpose request:', JSON.stringify({
+        originalContent: content.substring(0, 100) + '...', // Truncate for readability
+        platforms: platformsToUse,
+        brandVoice: userBrandVoice,
+        tone,
+        additionalInstructions,
+        userId
+      }, null, 2));
+      console.log('3. AI config:', JSON.stringify(aiConfig, null, 2));
 
       let repurposedContent;
       try {
         repurposedContent = await aiService.repurposeContent(repurposeRequest, aiConfig);
+        
+        // Debug logging after AI service call
+        console.log('4. AI service response received:', JSON.stringify({
+          totalItems: repurposedContent?.length || 0,
+          platforms: repurposedContent?.map(item => item.platform) || [],
+          platformsWithContent: repurposedContent?.filter(item => item.content && item.content.trim()).map(item => item.platform) || [],
+          emptyContentPlatforms: repurposedContent?.filter(item => !item.content || !item.content.trim()).map(item => item.platform) || []
+        }, null, 2));
+        
+        // Check if Facebook is specifically missing or empty
+        const facebookContent = repurposedContent?.find(item => item.platform === 'facebook');
+        if (platformsToUse.includes('facebook')) {
+          console.log('5. Facebook content debug:', {
+            requested: true,
+            found: !!facebookContent,
+            hasContent: facebookContent?.content ? facebookContent.content.length > 0 : false,
+            contentPreview: facebookContent?.content ? facebookContent.content.substring(0, 100) + '...' : 'NO CONTENT'
+          });
+        } else {
+          console.log('5. Facebook was not in requested platforms');
+        }
+        
+        // Log all platform results
+        console.log('6. All platform results:');
+        repurposedContent?.forEach((item, index) => {
+          console.log(`   Platform ${index + 1}: ${item.platform} - Content length: ${item.content?.length || 0} chars`);
+          if (item.content) {
+            console.log(`   Preview: ${item.content.substring(0, 50)}...`);
+          } else {
+            console.log('   ⚠️  NO CONTENT GENERATED');
+          }
+        });
+        
+        console.log('=== AI SERVICE DEBUG END ===');
+        
+        console.log('✅ AI SERVICE RETURNED:', repurposedContent?.length, 'items');
+        console.log('📋 PLATFORMS IN RESPONSE:', repurposedContent?.map(r => r.platform));
       } catch (aiError) {
         console.error('AI repurposing error:', aiError);
+        console.log('=== AI SERVICE DEBUG END (ERROR) ===');
         return new NextResponse(
           JSON.stringify({
             error: 'Content repurposing failed',
@@ -424,13 +554,25 @@ export async function POST(req: Request) {
           },
           metadata: {
             platformsUsed: platformsToUse,
-            provider: selectedProvider,
+            provider: repurposedContent[0]?.provider || 'unknown',
             brandVoice: userBrandVoice,
             totalCharacters: repurposedContent.reduce((sum, item) => sum + (item.characterCount || item.content.length), 0)
           }
         });
       } catch (dbError) {
-        console.error('[CONTENT_SAVE_ERROR]', dbError);
+        console.error('[CONTENT_SAVE_ERROR] Failed to save content to database:', {
+          error: dbError instanceof Error ? {
+            message: dbError.message,
+            stack: dbError.stack,
+            name: dbError.name
+          } : dbError,
+          userId,
+          contentType,
+          platformsUsed: platformsToUse,
+          contentTableExists,
+          repurposedContentTableExists,
+          databaseUrl: process.env.DATABASE_URL ? 'Set' : 'Not set'
+        });
         
         // Return the repurposed content even if we couldn't save it to the database
         return NextResponse.json({
@@ -454,10 +596,28 @@ export async function POST(req: Request) {
       }
     } catch (dbError) {
       console.error('[DB_ERROR]', dbError);
-      return new NextResponse('Database error while processing content', { status: 500 });
+      return new NextResponse(
+        JSON.stringify({ 
+          error: 'Database error', 
+          message: 'Error while processing content' 
+        }), 
+        { 
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
     }
   } catch (error) {
     console.error('[REPURPOSE_ERROR]', error)
-    return new NextResponse('Internal Error', { status: 500 })
+    return new NextResponse(
+      JSON.stringify({ 
+        error: 'Internal Error', 
+        message: 'An unexpected error occurred' 
+      }), 
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    )
   }
 } 
