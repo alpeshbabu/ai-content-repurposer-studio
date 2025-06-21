@@ -1,9 +1,41 @@
 import Stripe from 'stripe';
 
-// Server-side Stripe instance
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-11-20.acacia',
-  typescript: true,
+// Server-side Stripe instance - lazy initialization for serverless
+let stripeInstance: Stripe | null = null;
+
+export function getStripe(): Stripe {
+  if (!stripeInstance) {
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+    
+    if (!secretKey) {
+      console.error('[STRIPE_INIT] Environment variables check:', {
+        hasSecretKey: !!process.env.STRIPE_SECRET_KEY,
+        nodeEnv: process.env.NODE_ENV,
+        vercelEnv: process.env.VERCEL_ENV,
+        secretKeyPreview: process.env.STRIPE_SECRET_KEY ? 
+          `${process.env.STRIPE_SECRET_KEY.substring(0, 7)}...` : 'undefined'
+      });
+      throw new Error('STRIPE_SECRET_KEY is not configured in environment variables');
+    }
+    
+    stripeInstance = new Stripe(secretKey, {
+      apiVersion: '2024-11-20.acacia',
+      typescript: true,
+      telemetry: false,
+      maxNetworkRetries: 2,
+      timeout: 20000,
+    });
+    console.log('[STRIPE_INIT] Stripe client initialized successfully');
+  }
+  return stripeInstance;
+}
+
+// Create a Proxy that lazily initializes Stripe on first access
+export const stripe = new Proxy({} as Stripe, {
+  get(target, prop) {
+    const stripeClient = getStripe();
+    return stripeClient[prop as keyof Stripe];
+  }
 });
 
 // Client-side Stripe configuration
