@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+// Public endpoint - no auth required for debugging
 export async function GET() {
   try {
     const secretKey = process.env.STRIPE_SECRET_KEY;
