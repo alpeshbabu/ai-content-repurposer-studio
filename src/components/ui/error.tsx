@@ -159,7 +159,7 @@ const ErrorBoundary = React.forwardRef<
   }
 
   return <>{children}</>
-))
+})
 ErrorBoundary.displayName = "ErrorBoundary"
 
 export { ErrorDisplay, ErrorCard, ErrorBoundary, errorVariants }
