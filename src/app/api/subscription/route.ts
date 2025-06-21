@@ -152,11 +152,12 @@ export async function GET(req: Request) {
           
           // Use dynamic query to avoid TypeScript errors about missing models
           const dailyUsageResult = await withPrisma(async (prisma) => {
-            return await prisma.$queryRawUnsafe<{ count: number }[]>(
+            const result = await prisma.$queryRawUnsafe(
               `SELECT "count" FROM "DailyUsage" WHERE "userId" = $1 AND "date" = $2 LIMIT 1`,
               userId,
               today.toISOString()
             );
+            return result as { count: number }[];
           }).catch(() => []);
           
           const dailyUsed = dailyUsageResult.length > 0 ? Number(dailyUsageResult[0].count) : 0;
