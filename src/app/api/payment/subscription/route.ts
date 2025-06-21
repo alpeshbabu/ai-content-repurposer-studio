@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { stripe, STRIPE_PRICE_IDS, validateStripeConfig } from '@/lib/stripe';
 import { prisma } from '@/lib/prisma';
+import Stripe from 'stripe';
 
 // POST - Create subscription
 export async function POST(req: Request) {
@@ -25,6 +26,8 @@ export async function POST(req: Request) {
 
     const { plan, paymentMethodId } = await req.json();
 
+    console.log('[SUBSCRIPTION_API] Request params:', { plan, paymentMethodId });
+
     if (!plan || !['basic', 'pro', 'agency'].includes(plan)) {
       return new NextResponse('Invalid plan', { status: 400 });
     }
@@ -32,6 +35,9 @@ export async function POST(req: Request) {
     if (!paymentMethodId) {
       return new NextResponse('Payment method required', { status: 400 });
     }
+
+    const priceId = STRIPE_PRICE_IDS[plan as keyof typeof STRIPE_PRICE_IDS];
+    console.log('[SUBSCRIPTION_API] Price ID for plan:', { plan, priceId });
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
@@ -73,8 +79,6 @@ export async function POST(req: Request) {
       customer: customerId,
     });
 
-    const priceId = STRIPE_PRICE_IDS[plan as keyof typeof STRIPE_PRICE_IDS];
-
     // Cancel existing subscription if any
     if (user.subscriptions.length > 0) {
       const existingSubscription = user.subscriptions[0];
@@ -104,22 +108,43 @@ export async function POST(req: Request) {
     });
 
     // Save subscription to database
+    console.log('[SUBSCRIPTION_DEBUG] Raw subscription object keys:', Object.keys(subscription));
+    console.log('[SUBSCRIPTION_DEBUG] Subscription object structure:', {
+      id: (subscription as any).id,
+      status: (subscription as any).status,
+      current_period_start: (subscription as any).current_period_start,
+      current_period_end: (subscription as any).current_period_end,
+      cancel_at_period_end: (subscription as any).cancel_at_period_end
+    });
+
+    const sub = subscription as any;
+    
+    // Handle missing period dates with fallbacks
+    const currentPeriodStart = sub.current_period_start 
+      ? new Date(sub.current_period_start * 1000) 
+      : new Date();
+    const currentPeriodEnd = sub.current_period_end 
+      ? new Date(sub.current_period_end * 1000) 
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
+
     await prisma.subscription.create({
       data: {
         userId: user.id,
-        stripeSubscriptionId: subscription.id,
+        stripeSubscriptionId: sub.id,
         stripePriceId: priceId,
-        status: subscription.status,
-        currentPeriodStart: new Date(subscription.current_period_start * 1000),
-        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-        cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000) : null,
-        trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+        status: sub.status || 'incomplete',
+        currentPeriodStart,
+        currentPeriodEnd,
+        cancelAtPeriodEnd: sub.cancel_at_period_end || false,
+        trialStart: sub.trial_start ? new Date(sub.trial_start * 1000) : null,
+        trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
       },
     });
 
     // Determine subscription status based on Stripe status and payment intent
-    const invoice = subscription.latest_invoice as any;
+    const invoice = subscription.latest_invoice as unknown as Stripe.Invoice & {
+      payment_intent: Stripe.PaymentIntent;
+    };
     const paymentIntent = invoice?.payment_intent;
     
     // Log for debugging
@@ -175,7 +200,7 @@ export async function POST(req: Request) {
       data: {
         subscriptionPlan: shouldUpdatePlan ? plan : user.subscriptionPlan,
         subscriptionStatus: userSubscriptionStatus,
-        subscriptionRenewalDate: new Date(subscription.current_period_end * 1000),
+        subscriptionRenewalDate: currentPeriodEnd,
         defaultPaymentMethodId: paymentMethodId,
       },
     });
@@ -186,12 +211,39 @@ export async function POST(req: Request) {
       status: subscription.status,
       requiresAction: subscription.status === 'incomplete',
     });
-  } catch (error: any) {
-    console.error('[CREATE_SUBSCRIPTION_ERROR]', error);
+  } catch (error: unknown) {
+    console.error('[CREATE_SUBSCRIPTION_ERROR] Full error:', error);
+    
+    // Log more detailed error information
+    if (error && typeof error === 'object') {
+      const errorObj = error as {
+        name?: string;
+        message?: string;
+        type?: string;
+        code?: string;
+        param?: string;
+        stack?: string;
+      };
+      console.error('[CREATE_SUBSCRIPTION_ERROR] Error details:', {
+        name: errorObj.name,
+        message: errorObj.message,
+        type: errorObj.type,
+        code: errorObj.code,
+        param: errorObj.param,
+        stack: errorObj.stack
+      });
+    }
     
     // Handle Stripe-specific errors
-    if (error.type === 'StripeInvalidRequestError') {
-      if (error.code === 'resource_missing' && error.param?.includes('price')) {
+    const stripeError = error as {
+      type?: string;
+      code?: string;
+      param?: string;
+      message?: string;
+    };
+    if (stripeError.type === 'StripeInvalidRequestError') {
+      console.error('[STRIPE_ERROR] Invalid request:', stripeError);
+      if (stripeError.code === 'resource_missing' && stripeError.param?.includes('price')) {
         return NextResponse.json({
           error: 'Invalid plan configuration',
           message: 'The selected plan is not properly configured. Please contact support.',
@@ -201,21 +253,26 @@ export async function POST(req: Request) {
       
       return NextResponse.json({
         error: 'Payment processing error',
-        message: error.message || 'Unable to process payment. Please try again.',
-        code: error.code
+        message: stripeError.message || 'Unable to process payment. Please try again.',
+        code: stripeError.code
       }, { status: 400 });
     }
     
-    // Generic error response
+    // Return more detailed error for debugging
     return NextResponse.json({
       error: 'Internal server error',
-      message: 'An unexpected error occurred. Please try again later.'
+      message: 'An unexpected error occurred. Please try again later.',
+      debug: process.env.NODE_ENV === 'development' ? {
+        errorMessage: (error as Error)?.message,
+        errorType: (error as { type?: string })?.type,
+        errorCode: (error as { code?: string })?.code
+      } : undefined
     }, { status: 500 });
   }
 }
 
 // GET - Get user's current subscription
-export async function GET(req: Request) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     

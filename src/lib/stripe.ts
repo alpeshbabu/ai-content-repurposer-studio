@@ -19,7 +19,7 @@ export function getStripe(): Stripe {
     }
     
     stripeInstance = new Stripe(secretKey, {
-      apiVersion: '2024-11-20.acacia',
+      apiVersion: '2025-05-28.basil',
       typescript: true,
       telemetry: false,
       maxNetworkRetries: 2,
@@ -39,10 +39,10 @@ export const stripe = new Proxy({} as Stripe, {
 });
 
 // Client-side Stripe configuration
-export const getStripePromise = () => {
+export const getStripePromise = async () => {
   if (typeof window === 'undefined') return null;
   
-  const { loadStripe } = require('@stripe/stripe-js');
+  const { loadStripe } = await import('@stripe/stripe-js');
   return loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 };
 

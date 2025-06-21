@@ -11,7 +11,10 @@ import {
 import { CreditCard, Loader2, Check, AlertCircle, Lock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+console.log('[STRIPE_DEBUG] Publishable key available:', !!publishableKey);
+
+const stripePromise = publishableKey ? loadStripe(publishableKey) : null;
 
 interface CheckoutFormProps {
   plan: string;
@@ -45,7 +48,11 @@ function PaymentForm({ plan, user, returnUrl }: PaymentFormProps) {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
+    console.log('[CLIENT_DEBUG] Form submitted', { stripe: !!stripe, elements: !!elements, plan, paymentMethod });
+
     if (!stripe || !elements) {
+      console.error('[CLIENT_DEBUG] Stripe or elements not available');
+      setError('Payment system not ready. Please refresh the page.');
       return;
     }
 
@@ -55,6 +62,8 @@ function PaymentForm({ plan, user, returnUrl }: PaymentFormProps) {
 
     try {
       let paymentMethodId = paymentMethod;
+
+      console.log('[CLIENT_DEBUG] Payment method setup', { useExistingCard, paymentMethodId });
 
       // If using new card, create payment method
       if (!useExistingCard) {
@@ -157,9 +166,10 @@ function PaymentForm({ plan, user, returnUrl }: PaymentFormProps) {
         throw new Error(`Subscription verification failed. Current plan: ${verifyData.currentPlan}, Status: ${verifyData.status}`);
       }
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Payment error:', err);
-      setError(err.message || 'Payment failed. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Payment failed. Please try again.';
+      setError(errorMessage);
       setProcessingStep('');
     } finally {
       setLoading(false);
@@ -174,8 +184,6 @@ function PaymentForm({ plan, user, returnUrl }: PaymentFormProps) {
         '::placeholder': {
           color: '#aab7c4',
         },
-        backgroundColor: '#ffffff',
-        padding: '12px',
       },
       invalid: {
         color: '#9e2146',
@@ -326,6 +334,17 @@ function PaymentForm({ plan, user, returnUrl }: PaymentFormProps) {
 }
 
 export default function CheckoutForm(props: CheckoutFormProps) {
+  if (!stripePromise) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <h3 className="text-sm font-medium text-red-800">Configuration Error</h3>
+        <p className="text-sm text-red-700 mt-1">
+          Payment system is not properly configured. Please contact support.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <Elements stripe={stripePromise}>
       <PaymentForm {...props} />
