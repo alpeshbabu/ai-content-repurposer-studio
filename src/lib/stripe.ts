@@ -5,9 +5,9 @@ let stripeInstance: Stripe | null = null;
 
 export function getStripe(): Stripe {
   if (!stripeInstance) {
-    const secretKey = process.env.STRIPE_SECRET_KEY;
+    const rawSecretKey = process.env.STRIPE_SECRET_KEY;
     
-    if (!secretKey) {
+    if (!rawSecretKey) {
       console.error('[STRIPE_INIT] Environment variables check:', {
         hasSecretKey: !!process.env.STRIPE_SECRET_KEY,
         nodeEnv: process.env.NODE_ENV,
@@ -17,6 +17,16 @@ export function getStripe(): Stripe {
       });
       throw new Error('STRIPE_SECRET_KEY is not configured in environment variables');
     }
+
+    // Clean the secret key to remove any invalid characters
+    const secretKey = rawSecretKey.replace(/["'\n\r\t]/g, '').trim();
+    
+    console.log('[STRIPE_INIT] Key cleaning:', {
+      originalLength: rawSecretKey.length,
+      cleanedLength: secretKey.length,
+      wasCleaned: rawSecretKey !== secretKey,
+      prefix: secretKey.substring(0, 8)
+    });
     
     stripeInstance = new Stripe(secretKey, {
       apiVersion: '2025-05-28.basil',
