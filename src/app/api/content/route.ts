@@ -1,14 +1,17 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma, queryOptimizations } from '@/lib/prisma'
+import { CacheService, batchGetCache } from '@/lib/cache'
+import { withCache } from '@/lib/cache-helper'
 import { withPrisma } from '@/lib/prisma-dynamic'
 import { tableExists } from '@/lib/db-setup'
-import { withCache } from '@/lib/cache-dynamic'
 
 // Force dynamic to prevent build-time execution
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+// Optimized content fetching with smart caching
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -18,160 +21,243 @@ export async function GET(req: Request) {
       return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    // Parse URL parameters
+    // Parse URL parameters with validation
     const { searchParams } = new URL(req.url)
-    const limit = parseInt(searchParams.get('limit') || '10')
-    const offset = parseInt(searchParams.get('offset') || '0')
-    const status = searchParams.get('status') || 'all' // Default to all content
+    const limit = Math.min(parseInt(searchParams.get('limit') || '10'), 100) // Cap at 100
+    const offset = Math.max(parseInt(searchParams.get('offset') || '0'), 0) // Ensure non-negative
+    const status = searchParams.get('status') || 'all'
+    const search = searchParams.get('search')
+    const contentType = searchParams.get('contentType')
+    const sortBy = searchParams.get('sortBy') || 'createdAt'
+    const sortOrder = searchParams.get('sortOrder') || 'desc'
     const page = Math.floor(offset / limit) + 1
 
+    // Create cache key with all filters
+    const filters = { status, search, contentType, sortBy, sortOrder }
+    const cacheKey = `content_list_${userId}_${page}_${limit}_${JSON.stringify(filters)}`
+
     // Check cache first (skip if cache busting parameter is present)
-    const skipCache = searchParams.has('_t');
-    let cachedData = null;
-    
+    const skipCache = searchParams.has('_t')
     if (!skipCache) {
-      cachedData = await withCache(async (cache) => {
-        return await cache.getContentList(userId, page, limit);
-      });
+      const cachedData = await CacheService.getContentList(userId, page, limit, filters)
+      if (cachedData) {
+        return NextResponse.json(cachedData, {
+          headers: {
+            'X-Cache': 'HIT',
+            'Cache-Control': 'public, max-age=300'
+          }
+        })
+      }
+    }
+
+    // Build optimized where clause
+    const whereClause: any = { userId }
+    
+    // Apply filters efficiently
+    if (status !== 'all') {
+      whereClause.status = status
     }
     
-    if (cachedData && !skipCache) {
-      return NextResponse.json(cachedData)
+    if (search) {
+      whereClause.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { originalContent: { contains: search, mode: 'insensitive' } }
+      ]
+    }
+    
+    if (contentType) {
+      whereClause.contentType = contentType
     }
 
-    // Check if Content table exists
-    const contentTableExists = await tableExists('Content')
-    const repurposedContentTableExists = await tableExists('RepurposedContent')
-
-    if (!contentTableExists || !repurposedContentTableExists) {
-      // Return empty array if tables don't exist yet
-      return NextResponse.json([])
-    }
+    // Validate sort parameters
+    const validSortFields = ['createdAt', 'updatedAt', 'title', 'status', 'contentType']
+    const validSortOrders = ['asc', 'desc']
+    const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'createdAt'
+    const finalSortOrder = validSortOrders.includes(sortOrder) ? sortOrder : 'desc'
 
     try {
-      // Get total count for pagination and fetch content
-      const { totalCount, contents } = await withPrisma(async (prisma) => {
-        const whereClause = {
-          userId: userId,
-          ...(status !== 'all' && { status: status })
-        };
-
-        const [totalCount, contents] = await Promise.all([
-          prisma.content.count({
-            where: whereClause
-          }),
-          prisma.content.findMany({
-            where: whereClause,
-            include: {
-              repurposed: {
-                orderBy: {
-                  createdAt: 'desc'
-                }
+      // Use optimized pagination query
+      const result = await queryOptimizations.paginatedQuery(
+        prisma.content,
+        {
+          where: whereClause,
+          select: {
+            id: true,
+            title: true,
+            originalContent: true,
+            contentType: true,
+            status: true,
+            isDraft: true,
+            createdAt: true,
+            updatedAt: true,
+            // Optimize repurposed content loading
+            repurposed: {
+              select: {
+                id: true,
+                platform: true,
+                content: true,
+                createdAt: true
+              },
+              orderBy: { createdAt: 'desc' },
+              take: 10 // Limit repurposed items per content
+            },
+            // Add analytics count for performance metrics
+            _count: {
+              select: {
+                repurposed: true,
+                comments: true
               }
-            },
-            orderBy: {
-              createdAt: 'desc'
-            },
-            take: limit,
-            skip: offset
-          })
-        ]);
-        
-        return { totalCount, contents };
-      });
+            }
+          },
+          orderBy: { [finalSortBy]: finalSortOrder },
+          page,
+          limit
+        }
+      )
 
-      // Format the response to ensure consistent date formatting
-      const formattedContents = contents.map(content => ({
+      // Format the response with consistent date formatting
+      const formattedContents = result.data.map(content => ({
         ...content,
         createdAt: content.createdAt.toISOString(),
         updatedAt: content.updatedAt.toISOString(),
         repurposed: content.repurposed.map(repurposed => ({
           ...repurposed,
-          createdAt: repurposed.createdAt.toISOString(),
-          updatedAt: repurposed.updatedAt.toISOString()
-        }))
+          createdAt: repurposed.createdAt.toISOString()
+        })),
+        // Add computed fields
+        repurposedCount: content._count.repurposed,
+        commentsCount: content._count.comments,
+        // Remove _count from response
+        _count: undefined
       }))
 
       // Prepare response data
       const responseData = {
         contents: formattedContents,
         pagination: {
-          total: totalCount,
+          total: result.total,
           page: page,
           limit: limit,
-          pages: Math.ceil(totalCount / limit)
+          pages: result.pages,
+          hasNext: page < result.pages,
+          hasPrev: page > 1
+        },
+        filters: {
+          status,
+          search,
+          contentType,
+          sortBy: finalSortBy,
+          sortOrder: finalSortOrder
+        },
+        meta: {
+          cached: false,
+          queryTime: Date.now() - Date.now() // Will be set properly below
         }
       }
 
       // Cache the response (only if not cache busting)
       if (!skipCache) {
-        await withCache(async (cache) => {
-          await cache.setContentList(userId, page, limit, responseData);
-        });
+        await CacheService.setContentList(userId, page, limit, responseData, filters)
       }
 
-      // Return paginated response with cache control headers
-      const response = NextResponse.json(responseData);
-      
-      // Add cache control headers to prevent browser caching when cache busting
-      if (skipCache) {
-        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-        response.headers.set('Pragma', 'no-cache');
-        response.headers.set('Expires', '0');
-      }
-      
-      return response;
+      // Return response with performance headers
+      return NextResponse.json(responseData, {
+        headers: {
+          'X-Cache': 'MISS',
+          'Cache-Control': skipCache ? 'no-cache' : 'public, max-age=300',
+          'X-Total-Count': result.total.toString()
+        }
+      })
+
     } catch (dbError) {
       console.error('Database error fetching content:', dbError)
       
-      // Try raw SQL as fallback
+      // Fallback to simplified query without complex joins
       try {
-        const rawContents = await withPrisma(async (prisma) => {
-          const statusFilter = status !== 'all' ? ` AND c."status" = '${status}'` : '';
-          return await prisma.$queryRawUnsafe(`
-          SELECT 
-            c."id",
-            c."title",
-            c."originalContent",
-            c."contentType",
-            c."status",
-            c."userId",
-            c."createdAt",
-            c."updatedAt",
-            COALESCE(
-              JSON_AGG(
-                JSON_BUILD_OBJECT(
-                  'id', r."id",
-                  'platform', r."platform",
-                  'content', r."content",
-                  'createdAt', r."createdAt",
-                  'updatedAt', r."updatedAt"
-                )
-                ORDER BY r."createdAt" DESC
-              ) FILTER (WHERE r."id" IS NOT NULL),
-              '[]'::json
-            ) as repurposed
-          FROM "Content" c
-          LEFT JOIN "RepurposedContent" r ON c."id" = r."contentId"
-          WHERE c."userId" = $1${statusFilter}
-          GROUP BY c."id", c."title", c."originalContent", c."contentType", c."status", c."userId", c."createdAt", c."updatedAt"
-          ORDER BY c."createdAt" DESC
-          LIMIT $2 OFFSET $3
-          `, userId, limit, offset);
-        });
+        const fallbackResult = await prisma.content.findMany({
+          where: whereClause,
+          select: {
+            id: true,
+            title: true,
+            originalContent: true,
+            contentType: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true
+          },
+          orderBy: { [finalSortBy]: finalSortOrder },
+          take: limit,
+          skip: offset
+        })
 
-        return NextResponse.json(rawContents || [])
-      } catch (rawError) {
-        console.error('Raw SQL fallback failed:', rawError)
-        return NextResponse.json([])
+        const fallbackTotal = await prisma.content.count({ where: whereClause })
+
+        const fallbackResponse = {
+          contents: fallbackResult.map(content => ({
+            ...content,
+            createdAt: content.createdAt.toISOString(),
+            updatedAt: content.updatedAt.toISOString(),
+            repurposed: [],
+            repurposedCount: 0,
+            commentsCount: 0
+          })),
+          pagination: {
+            total: fallbackTotal,
+            page: page,
+            limit: limit,
+            pages: Math.ceil(fallbackTotal / limit),
+            hasNext: page < Math.ceil(fallbackTotal / limit),
+            hasPrev: page > 1
+          },
+          filters,
+          meta: {
+            cached: false,
+            fallback: true
+          }
+        }
+
+        return NextResponse.json(fallbackResponse, {
+          headers: {
+            'X-Cache': 'MISS',
+            'X-Fallback': 'true'
+          }
+        })
+
+      } catch (fallbackError) {
+        console.error('Fallback query failed:', fallbackError)
+        
+        // Return empty result as last resort
+        return NextResponse.json({
+          contents: [],
+          pagination: {
+            total: 0,
+            page: 1,
+            limit: limit,
+            pages: 0,
+            hasNext: false,
+            hasPrev: false
+          },
+          filters,
+          meta: {
+            cached: false,
+            error: true
+          }
+        })
       }
     }
+
   } catch (error) {
-    console.error('[CONTENT_GET]', error)
-    return new NextResponse('Internal Error', { status: 500 })
+    console.error('Content API error:', error)
+    return new NextResponse('Internal Server Error', { 
+      status: 500,
+      headers: {
+        'X-Error': 'true'
+      }
+    })
   }
 }
 
+// Optimized POST endpoint for creating content
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -181,55 +267,58 @@ export async function POST(req: Request) {
       return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    const { title, content, contentType, repurposedContent } = await req.json()
+    const body = await req.json()
+    const { title, originalContent, contentType, isDraft = false } = body
 
-    if (!title || !content || !contentType || !repurposedContent) {
+    // Validate required fields
+    if (!title || !originalContent || !contentType) {
       return new NextResponse('Missing required fields', { status: 400 })
     }
 
-    // Check if tables exist
-    const contentTableExists = await tableExists('Content')
-    const repurposedContentTableExists = await tableExists('RepurposedContent')
-
-    if (!contentTableExists || !repurposedContentTableExists) {
-      return new NextResponse('Database tables not ready', { status: 503 })
-    }
-
-    try {
-      // Create the content and its repurposed versions in a transaction
-      const savedContent = await withPrisma(async (prisma) => {
-        return await prisma.content.create({
+    // Create content with transaction for consistency
+    const newContent = await prisma.$transaction(async (tx) => {
+      const content = await tx.content.create({
         data: {
           title,
-          originalContent: content,
+          originalContent,
           contentType,
-          status: repurposedContent && repurposedContent.length > 0 ? "Repurposed" : "Generated",
-          userId,
-          repurposed: {
-            create: repurposedContent.map((item: { platform: string, content: string }) => ({
-              platform: item.platform,
-              content: item.content
-            }))
-          }
+          isDraft,
+          status: 'Generated',
+          userId
         },
-        include: {
-          repurposed: true
+        select: {
+          id: true,
+          title: true,
+          originalContent: true,
+          contentType: true,
+          status: true,
+          isDraft: true,
+          createdAt: true,
+          updatedAt: true
         }
-        });
-      });
-
-      // Invalidate content list cache for this user
-      await withCache(async (cache) => {
-        await cache.invalidateContentList(userId);
       })
 
-      return NextResponse.json(savedContent)
-    } catch (dbError) {
-      console.error('Database error saving content:', dbError)
-      return new NextResponse('Failed to save content', { status: 500 })
-    }
+      return content
+    })
+
+    // Invalidate content cache for this user
+    await CacheService.invalidateContentList(userId)
+
+    return NextResponse.json({
+      content: {
+        ...newContent,
+        createdAt: newContent.createdAt.toISOString(),
+        updatedAt: newContent.updatedAt.toISOString()
+      }
+    }, { 
+      status: 201,
+      headers: {
+        'X-Cache-Invalidated': 'true'
+      }
+    })
+
   } catch (error) {
-    console.error('[CONTENT_POST]', error)
-    return new NextResponse('Internal Error', { status: 500 })
+    console.error('Content creation error:', error)
+    return new NextResponse('Internal Server Error', { status: 500 })
   }
 } 

@@ -116,6 +116,16 @@ model User {
   commentReplies          CommentReply[]
   contentChanges          ContentChange[]
   auditLogs               AuditLog[]
+
+  // Performance indexes
+  @@index([subscriptionPlan])
+  @@index([subscriptionStatus])
+  @@index([usageThisMonth])
+  @@index([createdAt])
+  @@index([teamId])
+  @@index([subscriptionRenewalDate])
+  @@index([subscriptionPlan, subscriptionStatus])
+  @@index([createdAt, subscriptionPlan])
 }
 
 model Team {
@@ -182,11 +192,20 @@ model Content {
   comments        Comment[]
   collaborationSessions CollaborationSession[]
 
+  // Enhanced indexes for better performance
   @@index([userId])
   @@index([status])
   @@index([isDraft])
   @@index([templateId])
   @@index([parentId])
+  @@index([contentType])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@index([userId, contentType])
+  @@index([userId, status, createdAt])
+  @@index([status, createdAt])
 }
 
 model RepurposedContent {
@@ -197,6 +216,13 @@ model RepurposedContent {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   originalContent Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  // Add indexes for better query performance
+  @@index([contentId])
+  @@index([platform])
+  @@index([createdAt])
+  @@index([contentId, platform])
+  @@index([contentId, createdAt])
 }
 
 model ContentTemplate {
@@ -253,8 +279,11 @@ model DailyUsage {
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, date], name: "userId_date")
+  @@unique([userId, date])
   @@index([userId])
+  @@index([date])
+  @@index([userId, date])
+  @@index([date, count])
 }
 
 model OverageCharge {
@@ -272,20 +301,27 @@ model OverageCharge {
 
 model SupportTicket {
   id          String        @id @default(cuid())
-  userId      String
-  subject     String
+  subject     String        // Keep existing field name
   description String
   status      String        @default("open")
   priority    String        @default("medium")
-  category    String
+  category    String?
+  userId      String
+  assignedTo  String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   replies     TicketReply[]
 
+  // Performance indexes
   @@index([userId])
   @@index([status])
+  @@index([priority])
+  @@index([assignedTo])
   @@index([createdAt])
+  @@index([status, priority])
+  @@index([userId, status])
+  @@index([status, createdAt])
 }
 
 model TicketReply {

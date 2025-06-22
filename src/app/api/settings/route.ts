@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { withPrisma } from '@/lib/prisma-dynamic'
+import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { withCache } from '@/lib/cache-dynamic'
 
 // Force dynamic to prevent build-time execution
 export const dynamic = 'force-dynamic';
@@ -24,26 +23,9 @@ export async function GET() {
       return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    // Check cache first
-    const cachedSettings = await withCache(async (cache) => {
-      return await cache.getUserSettings(userId);
-    })
-    if (cachedSettings) {
-      return NextResponse.json(cachedSettings)
-    }
-
-    const settings = await withPrisma(async (prisma) => {
-      return await prisma.settings.findUnique({ 
-        where: { userId } 
-      });
+    const settings = await prisma.settings.findUnique({ 
+      where: { userId } 
     });
-    
-    // Cache the settings
-    if (settings) {
-      await withCache(async (cache) => {
-        await cache.setUserSettings(userId, settings);
-      });
-    }
     
     return NextResponse.json(settings)
   } catch (error) {
@@ -85,26 +67,19 @@ export async function POST(req: Request) {
 
     const { brandVoice, preferredPlatforms } = validation.data
 
-    const settings = await withPrisma(async (prisma) => {
-      return await prisma.settings.upsert({
-        where: { userId },
-        update: { 
-          brandVoice, 
-          preferredPlatforms,
-          updatedAt: new Date()
-        },
-        create: { 
-          userId, 
-          brandVoice, 
-          preferredPlatforms 
-        },
-      });
+    const settings = await prisma.settings.upsert({
+      where: { userId },
+      update: { 
+        brandVoice, 
+        preferredPlatforms,
+        updatedAt: new Date()
+      },
+      create: { 
+        userId, 
+        brandVoice, 
+        preferredPlatforms 
+      },
     });
-    
-    // Invalidate user settings cache
-    await withCache(async (cache) => {
-      await cache.invalidateUserSettings(userId);
-    })
     
     return NextResponse.json(settings)
   } catch (error) {

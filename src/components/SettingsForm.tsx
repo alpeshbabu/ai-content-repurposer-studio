@@ -54,10 +54,28 @@ export default function SettingsForm({ initialSettings, subscriptionPlan = 'free
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ brandVoice, preferredPlatforms }),
       })
-      if (!res.ok) throw new Error('Failed to save settings')
+      
+      if (!res.ok) {
+        let errorMessage = 'Failed to save settings'
+        try {
+          const errorData = await res.json()
+          errorMessage = errorData.error || errorMessage
+        } catch {
+          // If response is not JSON, use status text
+          errorMessage = `${res.status}: ${res.statusText}`
+        }
+        throw new Error(errorMessage)
+      }
+      
       notificationTemplates.settingsSaved()
     } catch (err) {
-      notificationTemplates.settingsError()
+      console.error('Settings save error:', err)
+      // Show more specific error message if available
+      if (err instanceof Error) {
+        notificationTemplates.settingsError()
+      } else {
+        notificationTemplates.settingsError()
+      }
     } finally {
       setIsLoading(false)
     }

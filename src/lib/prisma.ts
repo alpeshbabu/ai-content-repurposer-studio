@@ -1,8 +1,9 @@
 import { PrismaClient } from '../generated/prisma'
+import { withAccelerate } from '@prisma/extension-accelerate'
 
-// Enhanced PrismaClient configuration for enterprise stability
+// Enhanced PrismaClient configuration for enterprise stability and performance
 const createPrismaClient = () => {
-  return new PrismaClient({
+  const client = new PrismaClient({
     log: process.env.NODE_ENV === 'development' 
       ? ['query', 'error', 'warn', 'info'] 
       : ['error', 'warn'],
@@ -14,11 +15,27 @@ const createPrismaClient = () => {
     // Enhanced error formatting
     errorFormat: 'pretty',
   })
+
+  // Add middleware before extending with Accelerate
+  client.$use(async (params: any, next: any) => {
+    const before = Date.now()
+    const result = await next(params)
+    const after = Date.now()
+    
+    // Log slow queries in development
+    if (process.env.NODE_ENV === 'development' && (after - before) > 1000) {
+      console.log(`🐌 Slow Query: ${params.model}.${params.action} took ${after - before}ms`)
+    }
+    
+    return result
+  })
+
+  return client.$extends(withAccelerate())
 }
 
 // Connection pooling and retry configuration
 const globalForPrisma = globalThis as unknown as { 
-  prisma: PrismaClient | undefined 
+  prisma: ReturnType<typeof createPrismaClient> | undefined 
 }
 
 const prisma = globalForPrisma.prisma ?? createPrismaClient()
@@ -42,20 +59,38 @@ process.on('SIGTERM', async () => {
   process.exit(0)
 })
 
-// Add connection health check
+// Add connection health check with performance metrics
 export async function checkDatabaseHealth(): Promise<{
   healthy: boolean;
   latency?: number;
   error?: string;
+  connectionInfo?: {
+    activeConnections: number;
+    maxConnections: number;
+  };
 }> {
   try {
     const start = Date.now()
     await prisma.$queryRaw`SELECT 1`
     const latency = Date.now() - start
     
+    // Get connection pool info (PostgreSQL specific)
+    const connectionInfo = await prisma.$queryRaw<Array<{ active: number; max: number }>>`
+      SELECT 
+        count(*) as active,
+        setting::int as max
+      FROM pg_stat_activity, pg_settings 
+      WHERE name = 'max_connections'
+      GROUP BY setting
+    `.catch(() => [{ active: 0, max: 100 }])
+    
     return {
       healthy: true,
-      latency
+      latency,
+      connectionInfo: {
+        activeConnections: connectionInfo[0]?.active || 0,
+        maxConnections: connectionInfo[0]?.max || 100
+      }
     }
   } catch (error) {
     console.error('Database health check failed:', error)
@@ -73,6 +108,45 @@ export async function disconnectDatabase() {
     console.log('✅ Database disconnected gracefully')
   } catch (error) {
     console.error('❌ Error disconnecting database:', error)
+  }
+}
+
+// Query optimization helpers
+export const queryOptimizations = {
+  // Batch queries to reduce database round trips
+  async batchQueries<T>(queries: Promise<T>[]): Promise<T[]> {
+    return Promise.all(queries)
+  },
+  
+  // Paginated query with count optimization
+  async paginatedQuery<T>(
+    model: any,
+    options: {
+      where?: any;
+      select?: any;
+      include?: any;
+      orderBy?: any;
+      page: number;
+      limit: number;
+    }
+  ): Promise<{ data: T[]; total: number; pages: number }> {
+    const { page, limit, ...queryOptions } = options
+    const skip = (page - 1) * limit
+    
+    const [data, total] = await Promise.all([
+      model.findMany({
+        ...queryOptions,
+        skip,
+        take: limit
+      }),
+      model.count({ where: queryOptions.where })
+    ])
+    
+    return {
+      data,
+      total,
+      pages: Math.ceil(total / limit)
+    }
   }
 }
 

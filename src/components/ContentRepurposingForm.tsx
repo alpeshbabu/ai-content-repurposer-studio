@@ -50,6 +50,7 @@ export default function ContentRepurposingForm() {
   const [databaseSetupComplete, setDatabaseSetupComplete] = useState(true); // Default to true for better UX
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [generatedContent, setGeneratedContent] = useState<string>(''); // Track generated content
+  const [generatedContentId, setGeneratedContentId] = useState<string | null>(null); // Track generated content ID
   const [showRepurposePrompt, setShowRepurposePrompt] = useState(false); // Show repurpose prompt after generation
 
   // Check system health and database readiness
@@ -235,6 +236,7 @@ export default function ContentRepurposingForm() {
             tone,
             targetAudience,
             allowOverage,
+            ...(generatedContentId && { contentId: generatedContentId }), // Pass contentId to update existing content
           };
 
       const response = await fetch(apiEndpoint, {
@@ -288,7 +290,9 @@ export default function ContentRepurposingForm() {
         if (workflowMode === 'generate' && data.data?.content) {
           // For generate workflow, set the generated content and switch to repurpose mode
           const generatedText = data.data.content;
+          const contentId = data.data.contentId;
           setGeneratedContent(generatedText);
+          setGeneratedContentId(contentId);
           setContent(generatedText);
           setWorkflowMode('repurpose');
           setShowRepurposePrompt(true);
@@ -367,6 +371,7 @@ export default function ContentRepurposingForm() {
     if (newMode === 'generate') {
       setContent('');
       setGeneratedContent('');
+      setGeneratedContentId(null);
     }
   };
 
@@ -762,6 +767,7 @@ export default function ContentRepurposingForm() {
                 setTargetAudience('');
                 setResults([]);
                 setGeneratedContent('');
+                setGeneratedContentId(null);
                 setShowRepurposePrompt(false);
                 setWorkflowMode('generate');
               }}

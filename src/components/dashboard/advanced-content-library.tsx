@@ -200,6 +200,7 @@ export default function AdvancedContentLibrary() {
           title: content.title,
           content: content.originalContent,
           contentType: content.contentType,
+          contentId: content.id, // Pass existing content ID to update it
           platforms: ['twitter', 'linkedin', 'instagram']
         })
       });
