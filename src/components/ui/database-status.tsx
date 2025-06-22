@@ -27,38 +27,57 @@ export function DatabaseStatus() {
         
         const data = await response.json();
         
-        // Parse the new health API response format
+        // Parse the enhanced health API response format
         if (data.status === 'healthy') {
           setStatus('ready');
-          setMessage('System ready');
+          setMessage(data.diagnostics?.overall_message || 'System ready');
         } else if (data.status === 'degraded') {
           setStatus('initializing');
-          setMessage('System degraded - some services may be slow');
+          
+          // Use enhanced diagnostics for more specific messaging
+          if (data.diagnostics?.priority_issues?.length > 0) {
+            const primaryIssue = data.diagnostics.priority_issues[0];
+            setMessage(`${primaryIssue.component}: ${primaryIssue.message.replace(/[🟡🔴✅]/g, '').trim()}`);
+          } else if (data.diagnostics?.overall_message) {
+            setMessage(data.diagnostics.overall_message.replace(/[🟡🔴✅]/g, '').trim());
+          } else {
+            setMessage('System degraded - some services may be slow');
+          }
         } else if (data.status === 'unhealthy') {
           setStatus('error');
-          // Find the specific issue causing unhealthy status
-          const unhealthyChecks = [];
-          if (data.checks?.database?.status === 'unhealthy') {
-            unhealthyChecks.push('database');
-          }
-          if (data.checks?.memory?.status === 'unhealthy') {
-            unhealthyChecks.push('memory');
-          }
-          if (data.checks?.services?.status === 'unhealthy') {
-            unhealthyChecks.push('services');
-          }
-          if (data.checks?.environment?.status === 'unhealthy') {
-            unhealthyChecks.push('environment');
-          }
           
-          if (unhealthyChecks.length > 0) {
-            setMessage(`System unhealthy: ${unhealthyChecks.join(', ')} issues`);
+          // Use enhanced diagnostics for specific error messaging
+          if (data.diagnostics?.priority_issues?.length > 0) {
+            const criticalIssue = data.diagnostics.priority_issues[0];
+            const actionableStep = criticalIssue.actionable_steps?.[0] || 'Check system logs for details';
+            setMessage(`${criticalIssue.component} failed: ${actionableStep.replace(/^\d+\.\s*/, '')}`);
+          } else if (data.diagnostics?.overall_message) {
+            setMessage(data.diagnostics.overall_message.replace(/[🟡🔴✅]/g, '').trim());
           } else {
-            setMessage('System unhealthy - check logs');
+            // Legacy fallback
+            const unhealthyChecks = [];
+            if (data.checks?.database?.status === 'unhealthy') {
+              unhealthyChecks.push('database connection');
+            }
+            if (data.checks?.memory?.status === 'unhealthy') {
+              unhealthyChecks.push('memory usage critical');
+            }
+            if (data.checks?.services?.status === 'unhealthy') {
+              unhealthyChecks.push('external services');
+            }
+            if (data.checks?.environment?.status === 'unhealthy') {
+              unhealthyChecks.push('environment config');
+            }
+            
+            if (unhealthyChecks.length > 0) {
+              setMessage(`Issues found: ${unhealthyChecks.join(', ')}`);
+            } else {
+              setMessage('System unhealthy - check application logs');
+            }
           }
         } else {
           setStatus('error');
-          setMessage('System status unknown');
+          setMessage('System status unknown - health check failed');
         }
       } catch (error) {
         console.error('Error checking system health:', error);

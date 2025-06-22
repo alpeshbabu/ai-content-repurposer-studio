@@ -3,6 +3,7 @@ import { checkDatabaseHealth } from '@/lib/prisma'
 import { getSystemHealth } from '@/lib/error-handler'
 import { logger, LogCategory } from '@/lib/logger'
 import { validateProductionEnvironment } from '@/lib/security'
+import { HealthDiagnostics } from '@/lib/health-diagnostics'
 
 interface HealthCheck {
   status: 'healthy' | 'degraded' | 'unhealthy'
@@ -53,7 +54,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       userAgent: req.headers.get('user-agent')
     }, LogCategory.SYSTEM)
 
-    // Perform all health checks
+    // Use enhanced health diagnostics for detailed reporting
+    const healthReport = await HealthDiagnostics.performFullHealthCheck()
+    
+    // Also perform legacy checks for backward compatibility
     const [
       dbHealth,
       envValidation,
@@ -190,8 +194,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       overallStatus = 'healthy'
     }
 
-    const healthCheck: HealthCheck = {
-      status: overallStatus,
+    // Enhanced health check with detailed diagnostics
+    const enhancedHealthCheck = {
+      // Legacy format for backward compatibility
+      status: healthReport.overall_status,
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version || '1.0.0',
       environment: process.env.NODE_ENV || 'development',
@@ -210,31 +216,48 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         requestCount: metrics.requestCount,
         errorRate
       },
-      dependencies
+      dependencies,
+      
+      // Enhanced diagnostics
+      diagnostics: {
+        overall_message: healthReport.overall_message,
+        priority_issues: healthReport.priority_issues,
+        all_components: healthReport.all_diagnostics,
+        summary: healthReport.summary,
+        recommendations: healthReport.recommendations,
+        estimated_fix_time: healthReport.estimated_fix_time
+      }
     }
 
-    // Log health check result
-    if (overallStatus === 'unhealthy') {
+    // Log health check result with enhanced information
+    if (healthReport.overall_status === 'unhealthy') {
       logger.error('System health check failed', undefined, {
-        status: overallStatus,
-        failedChecks: allChecks.filter(check => check.status === 'unhealthy').length
+        status: healthReport.overall_status,
+        message: healthReport.overall_message,
+        priority_issues: healthReport.priority_issues.length,
+        unhealthy_components: healthReport.summary.unhealthy_count,
+        estimated_fix_time: healthReport.estimated_fix_time
       }, LogCategory.SYSTEM)
-    } else if (overallStatus === 'degraded') {
+    } else if (healthReport.overall_status === 'degraded') {
       logger.warn('System health degraded', {
-        status: overallStatus,
-        degradedChecks: allChecks.filter(check => check.status === 'degraded').length
+        status: healthReport.overall_status,
+        message: healthReport.overall_message,
+        degraded_components: healthReport.summary.degraded_count,
+        priority_issues: healthReport.priority_issues.length
       }, LogCategory.SYSTEM)
     }
 
     // Return appropriate status code
-    const statusCode = overallStatus === 'healthy' ? 200 : overallStatus === 'degraded' ? 200 : 503
+    const statusCode = healthReport.overall_status === 'healthy' ? 200 : healthReport.overall_status === 'degraded' ? 200 : 503
 
-    return NextResponse.json(healthCheck, { 
+    return NextResponse.json(enhancedHealthCheck, { 
       status: statusCode,
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
-        'Expires': '0'
+        'Expires': '0',
+        'X-Health-Status': healthReport.overall_status,
+        'X-Priority-Issues': healthReport.priority_issues.length.toString()
       }
     })
 
