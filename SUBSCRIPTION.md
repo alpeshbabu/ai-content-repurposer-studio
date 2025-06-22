@@ -124,19 +124,142 @@ model User {
 
 ## 6. Frontend Requirements
 
+### A. Basic Requirements
 - **Upgrade/Plans Page:** Show plan options, features, and upgrade button.
 - **Usage Meter:** Show current usage and limits in dashboard.
 - **Upgrade Prompt:** Modal or banner when user hits free tier limit.
 - **Manage Subscription:** Link to Stripe Customer Portal.
 
+### B. Enhanced Subscription Management UI
+
+#### 6.1 Dynamic Button States
+- **Current Plan Identification:** Visually highlight the user's active subscription plan card with:
+  - Different background color (e.g., blue/green accent)
+  - "Current Plan" badge/label
+  - Distinctive border or styling
+- **Smart Button Labels:**
+  - Show "Current Plan" for the active subscription
+  - Show "Upgrade" for higher-tier plans
+  - Show "Downgrade" for lower-tier plans
+  - Disable interaction for current plan card
+
+#### 6.2 Upgrade/Downgrade Flow
+- **Upgrade Flow:**
+  - Redirect to Stripe Checkout for immediate upgrade
+  - Apply proration for mid-cycle upgrades
+  - Show confirmation of upgrade success
+- **Downgrade Flow:**
+  - Show confirmation modal with downgrade implications:
+    - "Your plan will change to [Plan Name] at the end of your current billing period"
+    - List feature differences and limitations
+    - Confirm downgrade action
+  - Schedule downgrade for end of billing period (no immediate charge/refund)
+  - Show pending downgrade status in UI
+
+#### 6.3 Plan Comparison Matrix
+- **Feature Comparison:** Side-by-side comparison table showing:
+  - Monthly/daily limits
+  - AI model access
+  - Platform templates available
+  - Support level
+  - Team member allowance (Agency)
+  - Overage pricing
+- **Visual Indicators:**
+  - ✅ Feature included
+  - ❌ Feature not available
+  - 📈 Upgrade required for feature
+
+#### 6.4 Subscription Status Display
+- **Current Plan Info:**
+  - Plan name and billing amount
+  - Next billing date
+  - Current usage vs. limits
+  - Pending changes (if any downgrades scheduled)
+- **Usage Analytics:**
+  - Monthly usage progress bar
+  - Daily usage (for applicable plans)
+  - Overage charges accrued
+  - Historical usage trends
+
 ---
 
 ## 7. Backend/API Requirements
 
+### A. Core API Endpoints
 - **/api/stripe/checkout:** Create Stripe Checkout session.
 - **/api/stripe/webhook:** Handle Stripe events (subscription created, updated, canceled, payment failed).
 - **/api/usage:** Track and return user's usage for the month.
 - **Middleware:** Protect repurposing API based on plan/usage.
+
+### B. Enhanced Subscription Management APIs
+
+#### 7.1 Subscription Information
+- **GET /api/subscription/current:** Return user's current subscription details:
+  ```json
+  {
+    "currentPlan": "pro",
+    "status": "active",
+    "renewalDate": "2024-02-15",
+    "pendingDowngrade": null,
+    "usage": {
+      "monthly": 45,
+      "limit": 150,
+      "dailyUsed": 3,
+      "dailyLimit": 5
+    }
+  }
+  ```
+
+#### 7.2 Plan Management
+- **POST /api/subscription/upgrade:** Handle immediate upgrades via Stripe Checkout
+- **POST /api/subscription/downgrade:** Schedule downgrade for end of billing period:
+  ```json
+  {
+    "targetPlan": "basic",
+    "effectiveDate": "2024-02-15",
+    "confirmFeatureLoss": true
+  }
+  ```
+- **DELETE /api/subscription/pending-downgrade:** Cancel a scheduled downgrade
+
+#### 7.3 Plan Comparison Data
+- **GET /api/plans/compare:** Return plan feature matrix for UI comparison
+- **GET /api/plans/eligibility:** Return which plans user can upgrade/downgrade to
+
+### C. Database Schema Enhancements
+
+```prisma
+model User {
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  name                  String?
+  subscriptionPlan      String    @default("free")
+  subscriptionStatus    String    @default("inactive")
+  subscriptionRenewalDate DateTime?
+  pendingDowngradePlan  String?   // Plan to downgrade to at renewal
+  pendingDowngradeDate  DateTime? // When downgrade takes effect
+  usageThisMonth       Int       @default(0)
+  dailyUsageCount      Int       @default(0)
+  dailyUsageDate       DateTime? // Track which day the usage is for
+  teamId               String?
+  // ...other fields
+}
+
+model SubscriptionChange {
+  id              String   @id @default(cuid())
+  userId          String
+  fromPlan        String
+  toPlan          String
+  changeType      String   // "upgrade", "downgrade", "cancel"
+  scheduledDate   DateTime // When change takes effect
+  processedDate   DateTime?
+  status          String   // "pending", "processed", "canceled"
+  stripeEventId   String?
+  createdAt       DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id])
+}
+```
 
 ---
 
@@ -170,9 +293,86 @@ if (user.subscriptionPlan === 'free' && user.usageThisMonth >= 5) {
 
 ---
 
-## 12. Next Steps for Implementation
-1. Add subscription fields to the User model and migrate.
-2. Set up Stripe products, prices, and webhooks.
-3. Build upgrade/plan selection UI.
-4. Add usage tracking and enforcement logic.
-5. Test end-to-end flows. 
+---
+
+## 12. Enhanced Subscription Management - Business Logic
+
+### A. Plan Hierarchy & Button Logic
+```
+Free → Basic → Pro → Agency
+```
+
+#### Button State Logic:
+- **Current Plan:** "Current Plan" (disabled, highlighted)
+- **Higher Tier:** "Upgrade" (enabled, immediate effect)
+- **Lower Tier:** "Downgrade" (enabled, scheduled for renewal)
+
+### B. Downgrade Business Rules
+1. **Immediate Effect vs Scheduled:**
+   - Upgrades: Take effect immediately with proration
+   - Downgrades: Scheduled for end of current billing period (no partial refund)
+
+2. **Feature Access During Downgrade Period:**
+   - User retains current plan features until renewal date
+   - Show "Downgrade Scheduled" status in UI
+   - Allow cancellation of pending downgrade
+
+3. **Usage Limits on Downgrade:**
+   - If current usage exceeds target plan limits, show warning
+   - Reset usage counter at renewal when downgrade takes effect
+   - Calculate overage charges based on new plan rates
+
+### C. Edge Cases & Validation
+- **Prevent Invalid Downgrades:** Block downgrade if current month usage exceeds target plan limit
+- **Team Member Limits:** For Agency downgrades, ensure team size doesn't exceed new limit
+- **Payment Method:** Ensure valid payment method exists for future charges
+
+---
+
+## 13. Implementation Priority & Next Steps
+
+### Phase 1: Core Functionality (High Priority)
+1. **Database Schema Updates:**
+   - Add `pendingDowngradePlan` and `pendingDowngradeDate` to User model
+   - Create `SubscriptionChange` audit table
+   - Migrate existing data
+
+2. **API Development:**
+   - Implement `/api/subscription/current` endpoint
+   - Create `/api/subscription/downgrade` endpoint
+   - Update Stripe webhook handlers for scheduled changes
+
+3. **UI Components:**
+   - Enhance subscription cards with dynamic states
+   - Add current plan highlighting
+   - Implement upgrade/downgrade button logic
+
+### Phase 2: Enhanced UX (Medium Priority)
+4. **Advanced UI Features:**
+   - Build downgrade confirmation modal
+   - Create plan comparison matrix
+   - Add usage analytics dashboard
+   - Implement pending change notifications
+
+5. **Business Logic:**
+   - Add plan eligibility validation
+   - Implement usage-based downgrade restrictions
+   - Create team size validation for Agency downgrades
+
+### Phase 3: Polish & Analytics (Low Priority)
+6. **Admin & Monitoring:**
+   - Admin dashboard for subscription changes
+   - Revenue impact analytics
+   - Customer retention metrics
+
+7. **Testing & QA:**
+   - End-to-end upgrade/downgrade flows
+   - Edge case validation
+   - Payment failure scenarios
+   - Proration calculations
+
+### Technical Debt & Considerations
+- **Stripe Integration:** Use Stripe's subscription modification APIs
+- **Proration Handling:** Implement proper proration for mid-cycle changes
+- **Email Notifications:** Notify users of pending changes and confirmations
+- **Audit Trail:** Log all subscription changes for compliance and support 

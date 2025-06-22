@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Calendar, Clock, ArrowUpRight, FileText, Eye, Copy, Check, ChevronDown, ChevronRight, Search, X, ChevronLeft, ChevronRight as ChevronRightNav } from 'lucide-react';
+import { Calendar, Clock, ArrowUpRight, FileText, Eye, Copy, Check, ChevronDown, ChevronRight, Search, X, ChevronLeft, ChevronRight as ChevronRightNav, RefreshCw } from 'lucide-react';
 import { PlatformIcon, PlatformBadge, getPlatformConfig } from '@/lib/platform-icons';
 
 interface RepurposedContent {
@@ -17,6 +17,7 @@ interface Content {
   title: string;
   contentType: string;
   originalContent: string;
+  status: string;
   repurposed: RepurposedContent[];
   createdAt: string;
 }
@@ -41,6 +42,9 @@ export default function RecentContentList({ limit = 10, showPagination = true }:
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [repurposingId, setRepurposingId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [pagination, setPagination] = useState<PaginationInfo>({
     total: 0,
     page: 1,
@@ -52,11 +56,25 @@ export default function RecentContentList({ limit = 10, showPagination = true }:
     fetchContents();
   }, [limit, currentPage]);
 
-  const fetchContents = async () => {
+  const fetchContents = async (forceRefresh = false) => {
     try {
-      setLoading(true);
+      if (forceRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      
       const offset = (currentPage - 1) * limit;
-      const response = await fetch(`/api/content?limit=${limit}&offset=${offset}`);
+      const cacheBuster = forceRefresh ? `&_t=${Date.now()}` : '';
+      const response = await fetch(`/api/content?limit=${limit}&offset=${offset}${cacheBuster}`, {
+        ...(forceRefresh && {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        })
+      });
       
       if (!response.ok) {
         throw new Error('Failed to fetch content');
@@ -91,6 +109,7 @@ export default function RecentContentList({ limit = 10, showPagination = true }:
       setContents([]);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -158,6 +177,64 @@ export default function RecentContentList({ limit = 10, showPagination = true }:
   const truncateContent = (content: string, maxLength: number = 150) => {
     if (content.length <= maxLength) return content;
     return content.substring(0, maxLength).trim() + '...';
+  };
+
+  const handleRepurpose = async (content: Content) => {
+    if (content.status !== 'Generated' && !(content.status === undefined && content.repurposed.length === 0)) {
+      alert('Only Generated content can be repurposed.');
+      return;
+    }
+
+    setRepurposingId(content.id);
+    
+    try {
+      const response = await fetch('/api/repurpose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: content.title,
+          content: content.originalContent,
+          contentType: content.contentType,
+          contentId: content.id, // Pass existing content ID to update it
+          platforms: ['twitter', 'linkedin', 'instagram'] // Default platforms
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Immediately update the content with the actual repurposed data from the API response
+        setContents(prevContents => 
+          prevContents.map(item => 
+            item.id === content.id 
+              ? {
+                  ...item,
+                  status: 'Repurposed',
+                  repurposed: result.content?.repurposed || []
+                }
+              : item
+          )
+        );
+        
+        // Force a fresh fetch with cache busting after a short delay
+        setTimeout(async () => {
+          await fetchContents(true); // Force refresh with cache busting
+          console.log('Content list refreshed with fresh data');
+        }, 500);
+        
+        // Show success message
+        setShowSuccessMessage(true);
+        setTimeout(() => setShowSuccessMessage(false), 3000);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to repurpose content');
+      }
+    } catch (error) {
+      console.error('Repurpose failed:', error);
+      alert(`Failed to repurpose content: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setRepurposingId(null);
+    }
   };
 
   // Early return if we don't have a valid contents array yet
@@ -228,29 +305,55 @@ export default function RecentContentList({ limit = 10, showPagination = true }:
 
   return (
     <div className="space-y-4">
+      {/* Success Message */}
+      {showSuccessMessage && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <Check className="h-5 w-5 text-green-600 mr-2" />
+            <p className="text-green-800 font-medium">Content repurposed successfully!</p>
+          </div>
+        </div>
+      )}
+      
       {/* Search Box */}
       <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-4 w-4 text-gray-400" />
-          </div>
-          <input
-            type="text"
-            placeholder="Search content by title, type, platform, or text..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
-          />
-          {searchQuery && (
-            <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-              <button
-                onClick={clearSearch}
-                className="text-gray-400 hover:text-gray-600 focus:outline-none"
-              >
-                <X className="h-4 w-4" />
-              </button>
+        <div className="flex items-center space-x-3">
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-gray-400" />
             </div>
-          )}
+            <input
+              type="text"
+              placeholder="Search content by title, type, platform, or text..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            />
+            {searchQuery && (
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                <button
+                  onClick={clearSearch}
+                  className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {/* Refresh Button */}
+          <button
+            onClick={() => fetchContents(true)}
+            disabled={isRefreshing}
+            className={`inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium ${
+              isRefreshing 
+                ? 'text-gray-400 bg-gray-50 cursor-not-allowed' 
+                : 'text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500'
+            }`}
+            title="Refresh content list"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
         </div>
         
         {/* Search Results Info */}
@@ -311,6 +414,13 @@ export default function RecentContentList({ limit = 10, showPagination = true }:
                               <Calendar className="h-3 w-3 mr-1" />
                               {formatDate(content.createdAt)}
                             </span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              content.status === 'Repurposed' 
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {content.status || (content.repurposed.length > 0 ? 'Repurposed' : 'Generated')}
+                            </span>
                             <span className="text-gray-400">
                               {content.repurposed.length} platform{content.repurposed.length !== 1 ? 's' : ''}
                             </span>
@@ -319,20 +429,47 @@ export default function RecentContentList({ limit = 10, showPagination = true }:
                       </div>
                     </div>
                     
-                    {/* Platform Tags - Visible in collapsed state */}
-                    <div className="flex flex-wrap gap-1 ml-4">
-                      {content.repurposed.slice(0, 3).map((repurposed) => (
-                        <PlatformBadge
-                          key={repurposed.id}
-                          platform={repurposed.platform}
-                          size="sm"
-                        />
-                      ))}
-                      {content.repurposed.length > 3 && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                          +{content.repurposed.length - 3}
-                        </span>
+                    {/* Actions and Platform Tags - Visible in collapsed state */}
+                    <div className="flex items-center gap-2 ml-4">
+                      {/* Repurpose Button - Only for Generated content */}
+                      {(content.status === 'Generated' || (!content.status && content.repurposed.length === 0)) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRepurpose(content);
+                          }}
+                          disabled={repurposingId === content.id}
+                          className="inline-flex items-center px-3 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full hover:bg-indigo-100 hover:border-indigo-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {repurposingId === content.id ? (
+                            <>
+                              <div className="animate-spin rounded-full h-3 w-3 border-b border-indigo-600 mr-1"></div>
+                              Repurposing...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              Repurpose
+                            </>
+                          )}
+                        </button>
                       )}
+                      
+                      {/* Platform Tags */}
+                      <div className="flex flex-wrap gap-1">
+                        {content.repurposed.slice(0, 3).map((repurposed) => (
+                          <PlatformBadge
+                            key={repurposed.id}
+                            platform={repurposed.platform}
+                            size="sm"
+                          />
+                        ))}
+                        {content.repurposed.length > 3 && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            +{content.repurposed.length - 3}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </button>

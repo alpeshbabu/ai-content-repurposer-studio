@@ -1,280 +1,366 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminHandler, AdminAccessControl } from '@/lib/admin-middleware';
 import { prisma } from '@/lib/prisma';
+import { validateAdminRequest } from '@/lib/admin-auth';
 
 // GET /api/admin/subscribers/[subscriberId] - Get detailed subscriber information
-export const GET = createAdminHandler(
-  async (req: NextRequest, { params }: { params: Promise<{ subscriberId: string }> }) => {
-    const { subscriberId } = await params;
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { subscriberId: string } }
+) {
+  try {
+    // Validate admin authentication
+    const { isValid, error, payload } = await validateAdminRequest(req);
+    if (!isValid) {
+      return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 });
+    }
 
-    try {
-      // Try to get subscriber from database
-      const subscriber = await prisma.user.findUnique({
-        where: { 
-          id: subscriberId,
-          subscriptionPlan: {
-            not: 'free' // Only paid subscribers
+    const subscriberId = params.subscriberId;
+    console.log('Fetching subscriber with ID:', subscriberId);
+
+    // Fetch user with comprehensive data
+    console.log('About to query user...');
+    const user = await prisma.user.findUnique({
+      where: { id: subscriberId },
+      include: {
+        subscriptions: true,
+        contents: {
+          select: {
+            id: true,
+            status: true,
+            createdAt: true
           }
         },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          subscriptionPlan: true,
-          subscriptionStatus: true,
-          subscriptionStartDate: true,
-          subscriptionRenewalDate: true,
-          role: true,
-          createdAt: true,
-          emailVerified: true,
-          usageThisMonth: true,
-          totalUsage: true,
-          lastActiveAt: true,
-          updatedAt: true,
-        }
-      }).catch(() => null);
-
-      // If not found, provide mock data for demo
-      if (!subscriber) {
-        const mockSubscriber = {
-          id: subscriberId,
-          email: 'premium.subscriber@demo.com',
-          name: 'Demo Subscriber',
-          subscriptionPlan: 'pro',
-          subscriptionStatus: 'active',
-          subscriptionStartDate: new Date(Date.now() - 7776000000), // 3 months ago
-          subscriptionRenewalDate: new Date(Date.now() + 2592000000), // 1 month from now
-          role: 'user',
-          createdAt: new Date(Date.now() - 7776000000),
-          emailVerified: new Date(Date.now() - 7776000000),
-          usageThisMonth: 420,
-          totalUsage: 1680,
-          lastActiveAt: new Date(Date.now() - 172800000), // 2 days ago
-          updatedAt: new Date(Date.now() - 86400000),
-        };
-
-        return NextResponse.json({
-          success: true,
-          subscriber: {
-            ...mockSubscriber,
-            createdAt: mockSubscriber.createdAt.toISOString(),
-            subscriptionStartDate: mockSubscriber.subscriptionStartDate.toISOString(),
-            subscriptionRenewalDate: mockSubscriber.subscriptionRenewalDate.toISOString(),
-            emailVerified: mockSubscriber.emailVerified.toISOString(),
-            lastActiveAt: mockSubscriber.lastActiveAt.toISOString(),
-            updatedAt: mockSubscriber.updatedAt.toISOString(),
-            monthlyRevenue: 29,
-            lifetimeValue: 87,
-            churnRisk: 'medium',
-            subscriptionLength: 3,
-            // Additional subscriber metrics
-            paymentHistory: [
-              {
-                id: 'pay-1',
-                amount: 29,
-                status: 'paid',
-                date: new Date(Date.now() - 2592000000).toISOString(),
-                plan: 'pro'
-              },
-              {
-                id: 'pay-2',
-                amount: 29,
-                status: 'paid',
-                date: new Date(Date.now() - 5184000000).toISOString(),
-                plan: 'pro'
-              }
-            ],
-            usageHistory: [
-              { month: 'November 2024', usage: 420, limit: 500 },
-              { month: 'October 2024', usage: 380, limit: 500 },
-              { month: 'September 2024', usage: 450, limit: 500 }
-            ]
+        supportTickets: {
+          select: {
+            id: true,
+            status: true,
+            createdAt: true
           }
-        });
-      }
-
-      // Calculate additional metrics for real subscriber
-      const monthlyRevenue = getMonthlyRevenue(subscriber.subscriptionPlan, subscriber.subscriptionStatus);
-      const subscriptionLength = calculateSubscriptionLength(subscriber);
-      const lifetimeValue = monthlyRevenue * subscriptionLength;
-      const churnRisk = calculateChurnRisk(subscriber);
-
-      return NextResponse.json({
-        success: true,
-        subscriber: {
-          ...subscriber,
-          createdAt: subscriber.createdAt.toISOString(),
-          subscriptionStartDate: subscriber.subscriptionStartDate?.toISOString() || subscriber.createdAt.toISOString(),
-          subscriptionRenewalDate: subscriber.subscriptionRenewalDate?.toISOString() || null,
-          emailVerified: subscriber.emailVerified?.toISOString() || null,
-          lastActiveAt: subscriber.lastActiveAt?.toISOString() || subscriber.createdAt.toISOString(),
-          updatedAt: subscriber.updatedAt.toISOString(),
-          monthlyRevenue,
-          lifetimeValue,
-          churnRisk,
-          subscriptionLength,
-          paymentHistory: [], // Would fetch from payment provider
-          usageHistory: [] // Would calculate from usage records
         }
-      });
+      }
+    });
+    console.log('User query result:', user ? 'found' : 'not found');
 
-    } catch (error) {
-      console.error('[ADMIN_SUBSCRIBER_GET_ERROR]', error);
-      return NextResponse.json({
-        success: false,
-        error: 'Failed to fetch subscriber details'
-      }, { status: 500 });
+    if (!user) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Subscriber not found' 
+      }, { status: 404 });
     }
-  },
-  AdminAccessControl.usersManagement()
-);
+
+    // Calculate analytics
+    const contentCreated = user.contents.filter(c => c.status === 'Generated').length;
+    const contentRepurposed = user.contents.filter(c => c.status === 'Repurposed').length;
+    const totalContent = user.contents.length;
+
+    // Mock additional data (in a real app, this would come from analytics tables)
+    const mockAnalytics = {
+      loginCount: Math.floor(Math.random() * 100) + 10,
+      averageSessionDuration: Math.floor(Math.random() * 30) + 5,
+      lastActiveDate: user.updatedAt?.toISOString(),
+      topPlatforms: ['Twitter', 'LinkedIn', 'Facebook', 'Instagram'].slice(0, Math.floor(Math.random() * 4) + 1),
+      engagementScore: Math.floor(Math.random() * 40) + 60
+    };
+
+    const currentSubscription = user.subscriptions[0]; // Get the first/current subscription
+    const mockBilling = {
+      totalRevenue: Math.floor(Math.random() * 5000) + 100,
+      lastPayment: currentSubscription?.updatedAt?.toISOString(),
+      nextBilling: currentSubscription?.currentPeriodEnd?.toISOString(),
+      paymentMethods: Math.floor(Math.random() * 3) + 1,
+      invoiceCount: Math.floor(Math.random() * 12) + 1,
+      overageCharges: Math.floor(Math.random() * 200)
+    };
+
+    const mockSupport = {
+      ticketCount: user.supportTickets.length,
+      lastTicketDate: user.supportTickets[0]?.createdAt?.toISOString(),
+      satisfactionScore: Math.floor(Math.random() * 2) + 4, // 4-5 stars
+      responseTime: Math.floor(Math.random() * 24) + 1
+    };
+
+    // Calculate risk score based on various factors
+    let riskScore = 0;
+    if (currentSubscription?.status === 'canceled') riskScore += 3;
+    if (mockSupport.ticketCount > 5) riskScore += 2;
+    if (totalContent === 0) riskScore += 2;
+    if (!user.emailVerified) riskScore += 1;
+
+    const subscriberData = {
+      id: user.id,
+      name: user.name || 'Unknown User',
+      email: user.email,
+      image: user.image,
+      subscriptionPlan: currentSubscription?.plan || user.subscriptionPlan || 'free',
+      subscriptionStatus: currentSubscription?.status || user.subscriptionStatus || 'inactive',
+      subscriptionRenewalDate: currentSubscription?.currentPeriodEnd?.toISOString() || user.subscriptionRenewalDate?.toISOString(),
+      usageThisMonth: user.usageCount || 0,
+      totalUsage: totalContent,
+      isActive: user.isActive ?? true,
+      isBanned: user.isBanned ?? false,
+      isVerified: user.emailVerified ?? false,
+      riskScore,
+      createdAt: user.createdAt.toISOString(),
+      lastLoginAt: user.lastLoginAt?.toISOString(),
+      notes: user.adminNotes,
+      tags: user.tags || [],
+      
+      // Team information (simplified)
+      team: undefined,
+      
+      billing: mockBilling,
+      analytics: {
+        contentCreated,
+        contentRepurposed,
+        ...mockAnalytics
+      },
+      support: mockSupport
+    };
+
+    return NextResponse.json({
+      success: true,
+      data: subscriberData
+    });
+
+  } catch (error) {
+    console.error('Error fetching subscriber:', error);
+    console.error('Error details:', error.message, error.stack);
+    return NextResponse.json({
+      success: false,
+      error: 'Failed to fetch subscriber data'
+    }, { status: 500 });
+  }
+}
 
 // PATCH /api/admin/subscribers/[subscriberId] - Update subscriber subscription
-export const PATCH = createAdminHandler(
-  async (req: NextRequest, { params }: { params: Promise<{ subscriberId: string }> }) => {
-    const { subscriberId } = await params;
-    const body = await req.json();
-    const { subscriptionPlan, subscriptionStatus, subscriptionRenewalDate } = body;
-
-    try {
-      // Validate input
-      const validPlans = ['basic', 'pro', 'agency'];
-      const validStatuses = ['active', 'canceled', 'past_due', 'paused'];
-
-      if (subscriptionPlan && !validPlans.includes(subscriptionPlan)) {
-        return NextResponse.json({
-          success: false,
-          error: 'Invalid subscription plan'
-        }, { status: 400 });
-      }
-
-      if (subscriptionStatus && !validStatuses.includes(subscriptionStatus)) {
-        return NextResponse.json({
-          success: false,
-          error: 'Invalid subscription status'
-        }, { status: 400 });
-      }
-
-      // Try to update in database
-      const updatedSubscriber = await prisma.user.update({
-        where: { 
-          id: subscriberId,
-          subscriptionPlan: {
-            not: 'free'
-          }
-        },
-        data: {
-          ...(subscriptionPlan && { subscriptionPlan }),
-          ...(subscriptionStatus && { subscriptionStatus }),
-          ...(subscriptionRenewalDate && { subscriptionRenewalDate: new Date(subscriptionRenewalDate) }),
-          updatedAt: new Date()
-        },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          subscriptionPlan: true,
-          subscriptionStatus: true,
-          subscriptionRenewalDate: true,
-          updatedAt: true
-        }
-      }).catch(() => null);
-
-      if (!updatedSubscriber) {
-        // Return mock success for demo
-        return NextResponse.json({
-          success: true,
-          message: 'Subscriber updated successfully (demo mode)',
-          subscriber: {
-            id: subscriberId,
-            subscriptionPlan: subscriptionPlan || 'pro',
-            subscriptionStatus: subscriptionStatus || 'active',
-            subscriptionRenewalDate: subscriptionRenewalDate || new Date(Date.now() + 2592000000).toISOString(),
-            updatedAt: new Date().toISOString()
-          }
-        });
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: 'Subscriber updated successfully',
-        subscriber: {
-          ...updatedSubscriber,
-          subscriptionRenewalDate: updatedSubscriber.subscriptionRenewalDate?.toISOString() || null,
-          updatedAt: updatedSubscriber.updatedAt.toISOString()
-        }
-      });
-
-    } catch (error) {
-      console.error('[ADMIN_SUBSCRIBER_UPDATE_ERROR]', error);
-      return NextResponse.json({
-        success: false,
-        error: 'Failed to update subscriber'
-      }, { status: 500 });
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: { subscriberId: string } }
+) {
+  try {
+    // Validate admin authentication
+    const { isValid, error, payload } = await validateAdminRequest(req);
+    if (!isValid) {
+      return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 });
     }
-  },
-  AdminAccessControl.usersManagement()
-);
+
+    const subscriberId = params.subscriberId;
+    const body = await req.json();
+    
+    const {
+      name,
+      email,
+      subscriptionPlan,
+      isActive,
+      isBanned,
+      isVerified,
+      riskScore,
+      notes,
+      tags
+    } = body;
+
+    // Update user
+    const updatedUser = await prisma.user.update({
+      where: { id: subscriberId },
+      data: {
+        name,
+        email,
+        isActive,
+        isBanned,
+        emailVerified: isVerified ? new Date() : null,
+        adminNotes: notes,
+        tags: tags || [],
+        // Update subscription if plan changed
+        ...(subscriptionPlan && {
+          subscription: {
+            upsert: {
+              create: {
+                plan: subscriptionPlan,
+                status: 'active'
+              },
+              update: {
+                plan: subscriptionPlan
+              }
+            }
+          }
+        })
+      },
+      include: {
+        subscription: true,
+        team: {
+          include: {
+            members: true
+          }
+        },
+        content: {
+          select: {
+            id: true,
+            status: true
+          }
+        },
+        supportTickets: {
+          select: {
+            id: true,
+            status: true
+          }
+        }
+      }
+    });
+
+    // Log the admin action
+    await prisma.auditLog.create({
+      data: {
+        userId: `admin-${payload!.username}`,
+        action: 'ADMIN_UPDATE_USER',
+        resource: 'USER',
+        resourceId: subscriberId,
+        details: {
+          changes: body,
+          adminId: `admin-${payload!.username}`,
+          adminEmail: payload!.email
+        }
+      }
+    });
+
+    // Return updated data in the same format as GET
+    const contentCreated = updatedUser.content.filter(c => c.status === 'Generated').length;
+    const contentRepurposed = updatedUser.content.filter(c => c.status === 'Repurposed').length;
+
+    const responseData = {
+      id: updatedUser.id,
+      name: updatedUser.name || 'Unknown User',
+      email: updatedUser.email,
+      image: updatedUser.image,
+      subscriptionPlan: updatedUser.subscription?.plan || 'free',
+      subscriptionStatus: updatedUser.subscription?.status || 'inactive',
+      subscriptionRenewalDate: updatedUser.subscription?.currentPeriodEnd?.toISOString(),
+      usageThisMonth: updatedUser.usageCount || 0,
+      totalUsage: updatedUser.content.length,
+      isActive: updatedUser.isActive ?? true,
+      isBanned: updatedUser.isBanned ?? false,
+      isVerified: updatedUser.emailVerified ?? false,
+      riskScore: riskScore || 0,
+      createdAt: updatedUser.createdAt.toISOString(),
+      lastLoginAt: updatedUser.lastLoginAt?.toISOString(),
+      notes: updatedUser.adminNotes,
+      tags: updatedUser.tags || [],
+      
+      team: updatedUser.team ? {
+        id: updatedUser.team.id,
+        name: updatedUser.team.name,
+        memberCount: updatedUser.team.members.length,
+        role: updatedUser.teamRole || 'member'
+      } : undefined,
+      
+      billing: {
+        totalRevenue: Math.floor(Math.random() * 5000) + 100,
+        lastPayment: updatedUser.subscription?.updatedAt?.toISOString(),
+        nextBilling: updatedUser.subscription?.currentPeriodEnd?.toISOString(),
+        paymentMethods: Math.floor(Math.random() * 3) + 1,
+        invoiceCount: Math.floor(Math.random() * 12) + 1,
+        overageCharges: Math.floor(Math.random() * 200)
+      },
+      
+      analytics: {
+        contentCreated,
+        contentRepurposed,
+        loginCount: Math.floor(Math.random() * 100) + 10,
+        averageSessionDuration: Math.floor(Math.random() * 30) + 5,
+        lastActiveDate: updatedUser.updatedAt?.toISOString(),
+        topPlatforms: ['Twitter', 'LinkedIn', 'Facebook', 'Instagram'].slice(0, Math.floor(Math.random() * 4) + 1),
+        engagementScore: Math.floor(Math.random() * 40) + 60
+      },
+      
+      support: {
+        ticketCount: updatedUser.supportTickets.length,
+        lastTicketDate: updatedUser.supportTickets[0]?.createdAt?.toISOString(),
+        satisfactionScore: Math.floor(Math.random() * 2) + 4,
+        responseTime: Math.floor(Math.random() * 24) + 1
+      }
+    };
+
+    return NextResponse.json({
+      success: true,
+      data: responseData
+    });
+
+  } catch (error) {
+    console.error('Error updating subscriber:', error);
+    return NextResponse.json({
+      success: false,
+      error: 'Failed to update subscriber'
+    }, { status: 500 });
+  }
+}
 
 // DELETE /api/admin/subscribers/[subscriberId] - Cancel subscription (soft delete)
-export const DELETE = createAdminHandler(
-  async (req: NextRequest, { params }: { params: Promise<{ subscriberId: string }> }) => {
-    const { subscriberId } = await params;
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { subscriberId: string } }
+) {
+  try {
+    // Validate admin authentication
+    const { isValid, error, payload } = await validateAdminRequest(req);
+    if (!isValid) {
+      return NextResponse.json({ error: error || 'Unauthorized' }, { status: 401 });
+    }
 
-    try {
-      // Try to cancel subscription in database
-      const canceledSubscriber = await prisma.user.update({
-        where: { 
-          id: subscriberId,
-          subscriptionPlan: {
-            not: 'free'
-          }
-        },
-        data: {
-          subscriptionStatus: 'canceled',
-          subscriptionRenewalDate: new Date(Date.now() + 2592000000), // Cancel at end of current period
-          updatedAt: new Date()
-        },
-        select: {
-          id: true,
-          email: true,
-          subscriptionStatus: true,
-          subscriptionRenewalDate: true
-        }
-      }).catch(() => null);
+    const subscriberId = params.subscriberId;
 
-      if (!canceledSubscriber) {
-        // Return mock success for demo
-        return NextResponse.json({
-          success: true,
-          message: 'Subscription canceled successfully (demo mode)',
-          subscriber: {
-            id: subscriberId,
-            subscriptionStatus: 'canceled',
-            subscriptionRenewalDate: new Date(Date.now() + 2592000000).toISOString()
-          }
-        });
+    // Try to cancel subscription in database
+    const canceledSubscriber = await prisma.user.update({
+      where: { 
+        id: subscriberId
+      },
+      data: {
+        isActive: false,
+        updatedAt: new Date()
+      },
+      select: {
+        id: true,
+        email: true,
+        isActive: true,
+        updatedAt: true
       }
+    }).catch(() => null);
 
-      return NextResponse.json({
-        success: true,
-        message: 'Subscription canceled successfully',
-        subscriber: {
-          ...canceledSubscriber,
-          subscriptionRenewalDate: canceledSubscriber.subscriptionRenewalDate?.toISOString() || null
-        }
-      });
-
-    } catch (error) {
-      console.error('[ADMIN_SUBSCRIBER_CANCEL_ERROR]', error);
+    if (!canceledSubscriber) {
       return NextResponse.json({
         success: false,
-        error: 'Failed to cancel subscription'
-      }, { status: 500 });
+        error: 'Subscriber not found'
+      }, { status: 404 });
     }
-  },
-  AdminAccessControl.usersManagement()
-);
+
+    // Log the admin action
+    await prisma.auditLog.create({
+      data: {
+        userId: `admin-${payload!.username}`,
+        action: 'ADMIN_DELETE_USER',
+        resource: 'USER',
+        resourceId: subscriberId,
+        details: {
+          adminId: `admin-${payload!.username}`,
+          adminEmail: payload!.email,
+          targetUserId: subscriberId,
+          targetUserEmail: canceledSubscriber.email
+        }
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Subscriber deactivated successfully',
+      data: canceledSubscriber
+    });
+
+  } catch (error) {
+    console.error('Error deleting subscriber:', error);
+    return NextResponse.json({
+      success: false,
+      error: 'Failed to delete subscriber'
+    }, { status: 500 });
+  }
+}
 
 // Helper functions
 function getMonthlyRevenue(plan: string, status: string): number {

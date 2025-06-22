@@ -81,6 +81,12 @@ model User {
   teamId                  String?
   role                    String?         @default("member")
   
+  // Enhanced subscription management fields
+  pendingDowngradePlan    String?         // Plan to downgrade to at renewal
+  pendingDowngradeDate    DateTime?       // When downgrade takes effect
+  dailyUsageCount         Int             @default(0)
+  dailyUsageDate          DateTime?       // Track which day the usage is for
+  
   // Payment fields
   stripeCustomerId        String?         @unique
   defaultPaymentMethodId  String?
@@ -91,6 +97,7 @@ model User {
   sessions                Session[]
   // App relations
   contents                Content[]
+  contentTemplates        ContentTemplate[]
   DailyUsage              DailyUsage[]
   overageCharges          OverageCharge[]
   settings                Settings?
@@ -103,6 +110,12 @@ model User {
   paymentMethods          PaymentMethod[]
   subscriptions           Subscription[]
   invoices                Invoice[]
+  subscriptionChanges     SubscriptionChange[]
+  billingCycles           BillingCycle[]
+  comments                Comment[]
+  commentReplies          CommentReply[]
+  contentChanges          ContentChange[]
+  auditLogs               AuditLog[]
 }
 
 model Team {
@@ -152,11 +165,28 @@ model Content {
   title           String
   originalContent String
   contentType     String
+  status          String              @default("Generated") // "Generated" for keyword-generated content, "Repurposed" for repurposed content
+  isDraft         Boolean             @default(false)
+  templateId      String?             // Reference to template used
+  version         Int                 @default(1)
+  parentId        String?             // For content versioning
   userId          String
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
   user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template        ContentTemplate?    @relation(fields: [templateId], references: [id])
+  parent          Content?            @relation("ContentVersions", fields: [parentId], references: [id])
+  versions        Content[]           @relation("ContentVersions")
   repurposed      RepurposedContent[]
+  analytics       ContentAnalytics[]
+  comments        Comment[]
+  collaborationSessions CollaborationSession[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([isDraft])
+  @@index([templateId])
+  @@index([parentId])
 }
 
 model RepurposedContent {
@@ -167,6 +197,40 @@ model RepurposedContent {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   originalContent Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+}
+
+model ContentTemplate {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  contentType String    // blog, article, social_post, email, etc.
+  template    String    // Template content with placeholders
+  variables   String[]  // Array of variable names like ["title", "keywords", "tone"]
+  isPublic    Boolean   @default(false) // Public templates vs user-specific
+  userId      String?   // Null for public templates
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contents    Content[]
+
+  @@index([contentType])
+  @@index([isPublic])
+  @@index([userId])
+}
+
+model ContentAnalytics {
+  id          String   @id @default(cuid())
+  contentId   String
+  views       Int      @default(0)
+  repurposes  Int      @default(0)
+  engagement  Json?    // Store engagement metrics as JSON
+  performance Json?    // Store performance data as JSON
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  content     Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([contentId])
+  @@index([contentId])
 }
 
 model Settings {
@@ -318,4 +382,130 @@ model Invoice {
   @@index([userId])
   @@index([stripeInvoiceId])
   @@index([status])
+}
+
+model SubscriptionChange {
+  id              String   @id @default(cuid())
+  userId          String
+  fromPlan        String
+  toPlan          String
+  changeType      String   // "upgrade", "downgrade", "cancel"
+  scheduledDate   DateTime // When change takes effect
+  processedDate   DateTime?
+  status          String   // "pending", "processed", "canceled"
+  stripeEventId   String?
+  createdAt       DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledDate])
+}
+
+// Phase 2: Enhanced Billing Models
+model BillingCycle {
+  id              String   @id @default(cuid())
+  userId          String
+  period          String   // YYYY-MM format
+  planType        String
+  baseAmount      Float    // Base subscription amount in cents
+  usageAmount     Float    // Usage charges in cents
+  overageAmount   Float    // Overage charges in cents
+  totalAmount     Float    // Total amount in cents
+  status          String   @default("pending") // pending, processed, failed
+  processedAt     DateTime?
+  stripeInvoiceId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([period])
+  @@index([status])
+}
+
+// Phase 2: Collaboration Models
+model Comment {
+  id        String         @id @default(cuid())
+  contentId String
+  userId    String
+  text      String
+  position  Int            // Character position in content
+  resolved  Boolean        @default(false)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  content   Content        @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replies   CommentReply[]
+
+  @@index([contentId])
+  @@index([userId])
+  @@index([resolved])
+}
+
+model CommentReply {
+  id        String   @id @default(cuid())
+  commentId String
+  userId    String
+  text      String
+  createdAt DateTime @default(now())
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([commentId])
+  @@index([userId])
+}
+
+model CollaborationSession {
+  id        String    @id @default(cuid())
+  contentId String
+  status    String    @default("active") // active, ended
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  content   Content   @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  changes   ContentChange[]
+
+  @@index([contentId])
+  @@index([status])
+}
+
+model ContentChange {
+  id        String              @id @default(cuid())
+  sessionId String
+  userId    String
+  type      String              // insert, delete, format, comment
+  position  Int
+  content   String?
+  length    Int?
+  metadata  Json?
+  timestamp DateTime            @default(now())
+  session   CollaborationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([timestamp])
+}
+
+// Audit Logging Model
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  sessionId   String?
+  action      String
+  resource    String?
+  resourceId  String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  success     Boolean  @default(true)
+  errorMessage String?
+  createdAt   DateTime @default(now())
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([resource])
+  @@index([createdAt])
 }

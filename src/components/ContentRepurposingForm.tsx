@@ -49,6 +49,8 @@ export default function ContentRepurposingForm() {
   const [loadingUsage, setLoadingUsage] = useState(true);
   const [databaseSetupComplete, setDatabaseSetupComplete] = useState(true); // Default to true for better UX
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [generatedContent, setGeneratedContent] = useState<string>(''); // Track generated content
+  const [showRepurposePrompt, setShowRepurposePrompt] = useState(false); // Show repurpose prompt after generation
 
   // Check system health and database readiness
   useEffect(() => {
@@ -212,6 +214,7 @@ export default function ContentRepurposingForm() {
 
     setLoading(true);
     setResults([]);
+    setShowRepurposePrompt(false);
 
     try {
       const apiEndpoint = workflowMode === 'generate' ? '/api/content/generate' : '/api/repurpose';
@@ -262,7 +265,7 @@ export default function ContentRepurposingForm() {
       }
 
       if (!response.ok) {
-        throw new Error('Failed to repurpose content');
+        throw new Error(`Failed to ${workflowMode === 'generate' ? 'generate' : 'repurpose'} content`);
       }
 
       const data = await response.json();
@@ -283,40 +286,21 @@ export default function ContentRepurposingForm() {
       // Handle different response structures for generate vs repurpose
       if (data.success) {
         if (workflowMode === 'generate' && data.data?.content) {
-          // For generate workflow, we need to repurpose the generated content
-          // Set the generated content and then call repurpose
-          setContent(data.data.content);
-          notifications.success('Content generated! Now repurposing for selected platforms...');
+          // For generate workflow, set the generated content and switch to repurpose mode
+          const generatedText = data.data.content;
+          setGeneratedContent(generatedText);
+          setContent(generatedText);
+          setWorkflowMode('repurpose');
+          setShowRepurposePrompt(true);
           
-          // Auto-repurpose the generated content
-          const repurposeData = {
-            title: title || 'Generated Content',
-            content: data.data.content,
-            contentType: contentType || 'general',
-            platforms: selectedPlatforms,
-            tone,
-            targetAudience,
-            brandVoice: '',
-            additionalInstructions: ''
-          };
-          
-          // Make repurpose API call
-          const repurposeResponse = await fetch('/api/repurpose', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(repurposeData)
+          notifications.success('Content generated successfully! Now you can repurpose it for different platforms.', {
+            duration: 5000,
+            icon: '✨'
           });
-          
-          if (repurposeResponse.ok) {
-            const repurposeResult = await repurposeResponse.json();
-            if (repurposeResult.success && repurposeResult.content?.repurposed) {
-              setResults(repurposeResult.content.repurposed);
-              notifications.success('Content successfully generated and repurposed!');
-            }
-          }
         } else if (workflowMode === 'repurpose' && data.content?.repurposed) {
           // For repurpose workflow, directly set the results
           setResults(data.content.repurposed);
+          setShowRepurposePrompt(false);
           notifications.success('Content successfully repurposed!');
         } else {
           throw new Error('Invalid response format: Missing expected content structure');
@@ -368,6 +352,21 @@ export default function ContentRepurposingForm() {
       notifications.error('Failed to copy content', {
         description: 'Please try again or copy manually'
       });
+    }
+  };
+
+  const handleWorkflowModeChange = () => {
+    const newMode = workflowMode === 'generate' ? 'repurpose' : 'generate';
+    setWorkflowMode(newMode);
+    
+    // Clear results and prompts when switching modes
+    setResults([]);
+    setShowRepurposePrompt(false);
+    
+    // If switching to generate mode, clear the content field
+    if (newMode === 'generate') {
+      setContent('');
+      setGeneratedContent('');
     }
   };
 
@@ -466,7 +465,7 @@ export default function ContentRepurposingForm() {
             </span>
             <button
               type="button"
-              onClick={() => setWorkflowMode(workflowMode === 'generate' ? 'repurpose' : 'generate')}
+              onClick={handleWorkflowModeChange}
               className="relative inline-flex h-6 w-11 items-center rounded-full bg-indigo-600 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
               disabled={loading}
             >
@@ -483,11 +482,36 @@ export default function ContentRepurposingForm() {
         </div>
         <p className="text-sm text-gray-600">
           {workflowMode === 'generate' 
-            ? 'Create new content from keywords and automatically repurpose it for multiple platforms'
+            ? 'Create new content from keywords, then choose to repurpose it for multiple platforms'
             : 'Take existing content and adapt it for different social media platforms'
           }
         </p>
       </div>
+
+      {/* Generated Content Prompt */}
+      {showRepurposePrompt && generatedContent && (
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+          <div className="flex items-start space-x-4">
+            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-green-900 mb-2">Content Generated Successfully!</h3>
+              <p className="text-green-800 mb-4">
+                Your content has been generated and is ready for repurposing. Review the content below and click "Repurpose Content" when you're ready to adapt it for different platforms.
+              </p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowRepurposePrompt(false)}
+                  className="text-sm font-medium text-green-700 hover:text-green-900 transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Content Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -626,7 +650,7 @@ export default function ContentRepurposingForm() {
         )}
 
         {/* Platform Notice */}
-        {selectedPlatforms.length > 0 && (
+        {selectedPlatforms.length > 0 && workflowMode === 'repurpose' && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start space-x-3">
               <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
@@ -678,7 +702,7 @@ export default function ContentRepurposingForm() {
           <div className="text-center">
             <div className="inline-flex items-center space-x-2 px-4 py-2 bg-green-50 text-green-800 rounded-full text-sm font-medium">
               <CheckCircle className="h-4 w-4" />
-              <span>{workflowMode === 'generate' ? 'Content Successfully Generated' : 'Content Successfully Repurposed'}</span>
+              <span>Content Successfully Repurposed</span>
             </div>
           </div>
           
@@ -737,6 +761,9 @@ export default function ContentRepurposingForm() {
                 setKeywords('');
                 setTargetAudience('');
                 setResults([]);
+                setGeneratedContent('');
+                setShowRepurposePrompt(false);
+                setWorkflowMode('generate');
               }}
               className="px-6 py-2 text-gray-600 hover:text-gray-800 font-medium transition-colors duration-200"
             >

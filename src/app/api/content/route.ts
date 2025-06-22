@@ -22,13 +22,20 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const limit = parseInt(searchParams.get('limit') || '10')
     const offset = parseInt(searchParams.get('offset') || '0')
+    const status = searchParams.get('status') || 'all' // Default to all content
     const page = Math.floor(offset / limit) + 1
 
-    // Check cache first
-    const cachedData = await withCache(async (cache) => {
-      return await cache.getContentList(userId, page, limit);
-    })
-    if (cachedData) {
+    // Check cache first (skip if cache busting parameter is present)
+    const skipCache = searchParams.has('_t');
+    let cachedData = null;
+    
+    if (!skipCache) {
+      cachedData = await withCache(async (cache) => {
+        return await cache.getContentList(userId, page, limit);
+      });
+    }
+    
+    if (cachedData && !skipCache) {
       return NextResponse.json(cachedData)
     }
 
@@ -44,16 +51,17 @@ export async function GET(req: Request) {
     try {
       // Get total count for pagination and fetch content
       const { totalCount, contents } = await withPrisma(async (prisma) => {
+        const whereClause = {
+          userId: userId,
+          ...(status !== 'all' && { status: status })
+        };
+
         const [totalCount, contents] = await Promise.all([
           prisma.content.count({
-            where: {
-              userId: userId
-            }
+            where: whereClause
           }),
           prisma.content.findMany({
-            where: {
-              userId: userId
-            },
+            where: whereClause,
             include: {
               repurposed: {
                 orderBy: {
@@ -95,25 +103,38 @@ export async function GET(req: Request) {
         }
       }
 
-      // Cache the response
-      await withCache(async (cache) => {
-        await cache.setContentList(userId, page, limit, responseData);
-      })
+      // Cache the response (only if not cache busting)
+      if (!skipCache) {
+        await withCache(async (cache) => {
+          await cache.setContentList(userId, page, limit, responseData);
+        });
+      }
 
-      // Return paginated response
-      return NextResponse.json(responseData)
+      // Return paginated response with cache control headers
+      const response = NextResponse.json(responseData);
+      
+      // Add cache control headers to prevent browser caching when cache busting
+      if (skipCache) {
+        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        response.headers.set('Pragma', 'no-cache');
+        response.headers.set('Expires', '0');
+      }
+      
+      return response;
     } catch (dbError) {
       console.error('Database error fetching content:', dbError)
       
       // Try raw SQL as fallback
       try {
         const rawContents = await withPrisma(async (prisma) => {
+          const statusFilter = status !== 'all' ? ` AND c."status" = '${status}'` : '';
           return await prisma.$queryRawUnsafe(`
           SELECT 
             c."id",
             c."title",
             c."originalContent",
             c."contentType",
+            c."status",
             c."userId",
             c."createdAt",
             c."updatedAt",
@@ -132,8 +153,8 @@ export async function GET(req: Request) {
             ) as repurposed
           FROM "Content" c
           LEFT JOIN "RepurposedContent" r ON c."id" = r."contentId"
-          WHERE c."userId" = $1
-          GROUP BY c."id", c."title", c."originalContent", c."contentType", c."userId", c."createdAt", c."updatedAt"
+          WHERE c."userId" = $1${statusFilter}
+          GROUP BY c."id", c."title", c."originalContent", c."contentType", c."status", c."userId", c."createdAt", c."updatedAt"
           ORDER BY c."createdAt" DESC
           LIMIT $2 OFFSET $3
           `, userId, limit, offset);
@@ -182,6 +203,7 @@ export async function POST(req: Request) {
           title,
           originalContent: content,
           contentType,
+          status: repurposedContent && repurposedContent.length > 0 ? "Repurposed" : "Generated",
           userId,
           repurposed: {
             create: repurposedContent.map((item: { platform: string, content: string }) => ({

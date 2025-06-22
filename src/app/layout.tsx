@@ -4,6 +4,8 @@ import './globals.css'
 import type { Metadata, Viewport } from 'next'
 import { Outfit, Raleway } from 'next/font/google'
 import NextAuthProvider from '@/components/providers/NextAuthProvider'
+import { ThemeProvider } from '@/components/providers/ThemeProvider'
+import { KeyboardShortcutsProvider } from '@/components/ui/keyboard-shortcuts'
 import { validateEnvVars } from '@/lib/config'
 
 // Validate environment variables
@@ -53,7 +55,16 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={`${outfit.variable} ${raleway.variable}`}>
       <body className={raleway.className} suppressHydrationWarning>
         <NextAuthProvider>
-          {children}
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <KeyboardShortcutsProvider>
+              {children}
+            </KeyboardShortcutsProvider>
+          </ThemeProvider>
           <Toaster 
             position="top-center"
             reverseOrder={false}

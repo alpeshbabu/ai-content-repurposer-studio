@@ -99,10 +99,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const memoryLimitMB = memoryUsage.heapTotal / 1024 / 1024
     const memoryUsagePercent = (memoryUsedMB / memoryLimitMB) * 100
 
-    // Adjust memory thresholds based on environment
+    // Adjust memory thresholds based on environment - more lenient for development
     const isProduction = process.env.NODE_ENV === 'production'
-    const unhealthyThreshold = isProduction ? 90 : 98
-    const degradedThreshold = isProduction ? 70 : 85
+    const unhealthyThreshold = isProduction ? 90 : 99  // 99% for dev, 90% for prod
+    const degradedThreshold = isProduction ? 70 : 95   // 95% for dev, 70% for prod
 
     const memoryCheck: HealthCheckDetail = {
       status: memoryUsagePercent > unhealthyThreshold ? 'unhealthy' : memoryUsagePercent > degradedThreshold ? 'degraded' : 'healthy',

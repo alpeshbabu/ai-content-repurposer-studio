@@ -53,7 +53,12 @@ export function AdminUserList() {
       }
       
       console.log('Fetching admin users from:', url);
-      const response = await fetch(url);
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -78,10 +83,12 @@ export function AdminUserList() {
 
   const updateUserSubscription = async (userId: string, plan: string, status: string) => {
     try {
+      const token = localStorage.getItem('admin_token');
       const response = await fetch(`/api/admin/users/${userId}/subscription`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ plan, status }),
       });

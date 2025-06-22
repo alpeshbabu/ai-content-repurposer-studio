@@ -236,20 +236,13 @@ export default function DashboardPage() {
             {/* Quick Actions - Takes 2 columns */}
             <div className="lg:col-span-2">
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center mb-6">
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-indigo-50 rounded-lg">
                       <Zap className="h-5 w-5 text-indigo-600" />
                     </div>
                     <h2 className="text-lg font-semibold text-gray-900">Quick Actions</h2>
                   </div>
-                  <Link
-                    href="/dashboard/new"
-                    className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors group"
-                  >
-                    Create Content
-                    <ArrowUpRight className="ml-1 h-4 w-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                  </Link>
                 </div>
                 <QuickActions />
               </div>
@@ -342,7 +335,7 @@ export default function DashboardPage() {
                 <h2 className="text-lg font-semibold text-gray-900">Recent Content</h2>
               </div>
               <Link
-                href="/dashboard/new"
+                href="/dashboard/content"
                 className="text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
               >
                 View all →

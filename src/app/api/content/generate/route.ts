@@ -285,11 +285,52 @@ export async function POST(req: Request) {
         // Continue without failing the request
       }
 
-      // Return the generated content
+      // Save generated content to database
+      let savedContent = null;
+      try {
+        // Check if Content table exists
+        const contentTableExists = await tableExists('Content');
+        
+        if (contentTableExists) {
+          // Create a title from keywords if not provided
+          const contentTitle = keywords.length > 50 
+            ? keywords.substring(0, 50) + '...' 
+            : keywords;
+
+          savedContent = await prisma.content.create({
+            data: {
+              title: contentTitle,
+              originalContent: aiResponse.content,
+              contentType,
+              status: 'Generated', // Mark as generated content
+              userId,
+            },
+            select: {
+              id: true,
+              title: true,
+              status: true,
+              createdAt: true
+            }
+          });
+          
+          console.log(`✅ Saved generated content: "${savedContent.title}" (ID: ${savedContent.id})`);
+        } else {
+          console.log('⚠️ Content table does not exist, skipping database save');
+        }
+      } catch (saveError) {
+        console.error('Error saving generated content to database:', saveError);
+        // Continue without failing the request - content generation succeeded
+      }
+
+      // Return the generated content with database info
       const response = {
         success: true,
         data: {
           content: aiResponse.content,
+          contentId: savedContent?.id || null,
+          title: savedContent?.title || keywords,
+          status: savedContent?.status || 'Generated',
+          saved: !!savedContent,
           generatedAt: new Date().toISOString(),
           provider: aiResponse.provider,
           model: aiResponse.model,

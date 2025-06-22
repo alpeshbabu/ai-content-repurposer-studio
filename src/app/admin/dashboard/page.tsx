@@ -76,7 +76,7 @@ export default function AdminDashboardPage() {
   const handleQuickAction = (action: string) => {
     switch (action) {
       case 'users':
-        router.push('/admin/users');
+        router.push('/admin/subscribers');
         break;
       case 'tickets':
         router.push('/admin/support');

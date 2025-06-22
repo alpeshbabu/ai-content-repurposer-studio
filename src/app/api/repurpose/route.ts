@@ -11,6 +11,7 @@ import {
   validateUserTable,
   generateId 
 } from '@/lib/db-setup'
+import { withCache } from '@/lib/cache-dynamic'
 import { z } from 'zod'
 
 // Force dynamic to prevent build-time execution
@@ -22,6 +23,7 @@ const repurposeContentSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   content: z.string().min(1, 'Content is required'),
   contentType: z.string().min(1, 'Content type is required'),
+  contentId: z.string().optional(), // Optional - if provided, update existing content
   platforms: z.array(z.enum(['twitter', 'linkedin', 'instagram', 'facebook', 'email', 'newsletter', 'thread', 'youtube', 'tiktok', 'general'])).optional(),
   brandVoice: z.string().optional(),
   tone: z.string().optional(),
@@ -78,6 +80,7 @@ export async function POST(req: Request) {
       title, 
       content, 
       contentType, 
+      contentId: rawContentId,
       platforms,
       brandVoice,
       tone,
@@ -86,6 +89,19 @@ export async function POST(req: Request) {
       model,
       allowOverage 
     } = validation.data;
+
+    // Ensure contentId is properly handled - empty strings should be treated as undefined
+    const contentId = rawContentId && rawContentId.trim() !== '' ? rawContentId.trim() : undefined;
+
+    // Log contentId handling for debugging
+    console.log('[REPURPOSE_API] ContentId processing:', {
+      received: rawContentId,
+      processed: contentId,
+      willUpdate: !!contentId,
+      willCreate: !contentId
+    });
+
+
 
     // Ensure database tables exist
     const userTableValid = await validateUserTable();
@@ -475,65 +491,157 @@ export async function POST(req: Request) {
         
         if (contentTableExists && repurposedContentTableExists) {
           // Use Prisma model approach
+
           newContent = await withPrisma(async (prisma) => {
-            return await prisma.content.create({
-              data: {
-                title,
-                originalContent: content,
-                contentType,
-                userId,
-                repurposed: {
-                  create: repurposedContent.map(item => ({
-                    platform: item.platform,
-                    content: item.content
-                  }))
+            if (contentId) {
+              // Update existing content
+              console.log('[REPURPOSE_API] UPDATING existing content with ID:', contentId);
+              return await prisma.content.update({
+                where: { id: contentId },
+                data: {
+                  status: "Repurposed", // Update status to Repurposed
+                  repurposed: {
+                    deleteMany: {}, // Clear existing repurposed content
+                    create: repurposedContent.map(item => ({
+                      platform: item.platform,
+                      content: item.content
+                    }))
+                  }
+                },
+                include: {
+                  repurposed: true
                 }
-              },
-              include: {
-                repurposed: true
-              }
-            });
+              });
+            } else {
+              // Create new content
+              console.log('[REPURPOSE_API] CREATING new content (no contentId provided)');
+              return await prisma.content.create({
+                data: {
+                  title,
+                  originalContent: content,
+                  contentType,
+                  status: "Repurposed", // Mark as repurposed since it's being repurposed
+                  userId,
+                  repurposed: {
+                    create: repurposedContent.map(item => ({
+                      platform: item.platform,
+                      content: item.content
+                    }))
+                  }
+                },
+                include: {
+                  repurposed: true
+                }
+              });
+            }
           });
         } else {
           // Use raw SQL approach as fallback
-          const contentId = generateId();
-          
-          // Insert into Content table
-          await withPrisma(async (prisma) => {
-            await prisma.$executeRawUnsafe(`
-              INSERT INTO "Content" ("id", "title", "originalContent", "contentType", "userId", "createdAt", "updatedAt")
-              VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-            `, contentId, title, content, contentType, userId);
-          });
-          
-          // Insert each repurposed content
-          for (const item of repurposedContent) {
+          if (contentId) {
+            // Update existing content
+            await withPrisma(async (prisma) => {
+              // Update content status
+              await prisma.$executeRawUnsafe(`
+                UPDATE "Content" 
+                SET "status" = 'Repurposed', "updatedAt" = NOW()
+                WHERE "id" = $1
+              `, contentId);
+              
+              // Delete existing repurposed content
+              await prisma.$executeRawUnsafe(`
+                DELETE FROM "RepurposedContent" WHERE "contentId" = $1
+              `, contentId);
+            });
+            
+            // Insert new repurposed content
+            for (const item of repurposedContent) {
+              await withPrisma(async (prisma) => {
+                await prisma.$executeRawUnsafe(`
+                  INSERT INTO "RepurposedContent" ("id", "platform", "content", "contentId", "createdAt", "updatedAt")
+                  VALUES ($1, $2, $3, $4, NOW(), NOW())
+                `, generateId(), item.platform, item.content, contentId);
+              });
+            }
+            
+            // Construct result object for updated content
+            newContent = {
+              id: contentId,
+              title,
+              originalContent: content,
+              contentType,
+              userId,
+              createdAt: new Date(), // We don't have the original date in this context
+              updatedAt: new Date(),
+              repurposed: repurposedContent.map(item => ({
+                id: generateId(),
+                platform: item.platform,
+                content: item.content,
+                contentId: contentId,
+                createdAt: new Date(),
+                updatedAt: new Date()
+              }))
+            };
+          } else {
+            // Create new content
+            const newContentId = generateId();
+            
+            // Insert into Content table
             await withPrisma(async (prisma) => {
               await prisma.$executeRawUnsafe(`
-                INSERT INTO "RepurposedContent" ("id", "platform", "content", "contentId", "createdAt", "updatedAt")
-                VALUES ($1, $2, $3, $4, NOW(), NOW())
-              `, generateId(), item.platform, item.content, contentId);
+                INSERT INTO "Content" ("id", "title", "originalContent", "contentType", "status", "userId", "createdAt", "updatedAt")
+                VALUES ($1, $2, $3, $4, 'Repurposed', $5, NOW(), NOW())
+              `, newContentId, title, content, contentType, userId);
             });
-          }
-          
-          // Construct result object
-          newContent = {
-            id: contentId,
-            title,
-            originalContent: content,
-            contentType,
-            userId,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            repurposed: repurposedContent.map(item => ({
-              id: generateId(),
-              platform: item.platform,
-              content: item.content,
-              contentId: contentId,
+            
+            // Insert each repurposed content
+            for (const item of repurposedContent) {
+              await withPrisma(async (prisma) => {
+                await prisma.$executeRawUnsafe(`
+                  INSERT INTO "RepurposedContent" ("id", "platform", "content", "contentId", "createdAt", "updatedAt")
+                  VALUES ($1, $2, $3, $4, NOW(), NOW())
+                `, generateId(), item.platform, item.content, newContentId);
+              });
+            }
+            
+            // Construct result object
+            newContent = {
+              id: newContentId,
+              title,
+              originalContent: content,
+              contentType,
+              userId,
               createdAt: new Date(),
-              updatedAt: new Date()
-            }))
-          };
+              updatedAt: new Date(),
+              repurposed: repurposedContent.map(item => ({
+                id: generateId(),
+                platform: item.platform,
+                content: item.content,
+                contentId: newContentId,
+                createdAt: new Date(),
+                updatedAt: new Date()
+              }))
+            };
+          }
+        }
+
+        // Log the final result
+        console.log('[REPURPOSE_API] Operation completed:', {
+          contentId: newContent.id,
+          wasUpdate: !!contentId,
+          operation: contentId ? 'UPDATE' : 'CREATE',
+          status: newContent.status,
+          repurposedCount: newContent.repurposed.length
+        });
+
+        // Invalidate content list cache to ensure fresh data on next fetch
+        try {
+          await withCache(async (cache) => {
+            await cache.invalidateContentList(userId);
+          });
+          console.log('[REPURPOSE_API] Content list cache invalidated for user:', userId);
+        } catch (cacheError) {
+          console.error('[REPURPOSE_API] Failed to invalidate cache:', cacheError);
+          // Don't fail the request if cache invalidation fails
         }
 
         return NextResponse.json({
