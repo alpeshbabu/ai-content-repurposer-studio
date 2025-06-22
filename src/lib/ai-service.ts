@@ -5,7 +5,7 @@ import { ANTHROPIC_API_KEY, GROQ_API_KEY, ANTHROPIC_MODELS, GROQ_MODELS } from '
 // AI Provider types
 export type AIProvider = 'anthropic' | 'groq';
 export type ContentType = 'blog' | 'article' | 'social_post' | 'email' | 'video_transcript' | 'general';
-export type Platform = 'twitter' | 'linkedin' | 'instagram' | 'facebook' | 'email' | 'newsletter' | 'thread' | 'general';
+export type Platform = 'twitter' | 'linkedin' | 'instagram' | 'facebook' | 'email' | 'newsletter' | 'thread' | 'tiktok' | 'youtube' | 'general';
 
 // AI Service configuration
 export interface AIServiceConfig {

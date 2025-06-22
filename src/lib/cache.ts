@@ -326,8 +326,8 @@ export async function checkCacheHealth(): Promise<{
     await redis.ping()
     
     // Get cache metrics
-    const info = await redis.info('memory')
-    const keyCount = await redis.dbsize()
+    const info = await (redis as any).info('memory')
+    const keyCount = await (redis as any).dbsize()
     
     const memoryMatch = info.match(/used_memory_human:(.+)/)
     const memoryUsage = memoryMatch ? memoryMatch[1].trim() : 'unknown'

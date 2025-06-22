@@ -16,12 +16,27 @@ export default function SignUpPage() {
     password: '',
     confirmPassword: ''
   })
+  const [passwordsMatch, setPasswordsMatch] = useState<boolean | null>(null)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }))
+    const { name, value } = e.target
+    const newFormData = {
+      ...formData,
+      [name]: value
+    }
+    setFormData(newFormData)
+    
+    // Check password match in real-time
+    if (name === 'password' || name === 'confirmPassword') {
+      const password = name === 'password' ? value : newFormData.password
+      const confirmPassword = name === 'confirmPassword' ? value : newFormData.confirmPassword
+      
+      if (confirmPassword.length > 0) {
+        setPasswordsMatch(password === confirmPassword)
+      } else {
+        setPasswordsMatch(null)
+      }
+    }
   }
 
   const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -219,17 +234,43 @@ export default function SignUpPage() {
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
                 Confirm Password
               </label>
-              <input
-                id="confirmPassword"
-                name="confirmPassword"
-                type="password"
-                required
-                value={formData.confirmPassword}
-                onChange={handleInputChange}
-                disabled={isLoading}
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                placeholder="Confirm your password"
-              />
+              <div className="relative">
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  required
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  disabled={isLoading}
+                  className={`mt-1 appearance-none relative block w-full px-3 py-2 pr-10 border rounded-md focus:outline-none sm:text-sm ${
+                    passwordsMatch === null 
+                      ? 'border-gray-300 placeholder-gray-500 text-gray-900 focus:ring-indigo-500 focus:border-indigo-500'
+                      : passwordsMatch 
+                      ? 'border-green-300 placeholder-gray-500 text-gray-900 focus:ring-green-500 focus:border-green-500'
+                      : 'border-red-300 placeholder-gray-500 text-gray-900 focus:ring-red-500 focus:border-red-500'
+                  }`}
+                  placeholder="Confirm your password"
+                />
+                {passwordsMatch !== null && (
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                    {passwordsMatch ? (
+                      <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    )}
+                  </div>
+                )}
+              </div>
+              {passwordsMatch !== null && (
+                <p className={`mt-1 text-sm ${passwordsMatch ? 'text-green-600' : 'text-red-600'}`}>
+                  {passwordsMatch ? 'Passwords match!' : 'Passwords do not match'}
+                </p>
+              )}
             </div>
             
             <div>

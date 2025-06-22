@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   Database, 
   Server, 
@@ -22,8 +22,6 @@ import {
   Cloud,
   Shield,
   Clock,
-  Search,
-  Filter,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -67,12 +65,45 @@ interface LogEntry {
   userId?: string;
 }
 
+interface LogStats {
+  total: number;
+  info: number;
+  warn: number;
+  error: number;
+  debug: number;
+}
+
+interface PerformanceMetrics {
+  database?: {
+    connectionTime?: number;
+  };
+  memory?: {
+    usage?: number;
+  };
+  cpu?: {
+    usage?: number;
+  };
+  uptime?: {
+    formatted?: string;
+  };
+}
+
+interface PerformanceData {
+  metrics?: PerformanceMetrics;
+  responseTime?: number;
+}
+
+interface DatabaseTableData {
+  exists?: boolean;
+  count?: number;
+}
+
 export default function SystemPage() {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [logStats, setLogStats] = useState<any>(null);
+  const [logStats, setLogStats] = useState<LogStats | null>(null);
   const [logFilters, setLogFilters] = useState({
     level: '',
     component: '',
@@ -103,11 +134,48 @@ export default function SystemPage() {
     fetchSystemStatus();
   }, []);
 
+  const fetchLogs = useCallback(async () => {
+    try {
+      // Get admin token
+      const token = localStorage.getItem('admin_token');
+      if (!token) {
+        throw new Error('No admin token found');
+      }
+
+      const params = new URLSearchParams({
+        page: logPagination.page.toString(),
+        limit: logPagination.limit.toString(),
+        ...(logFilters.level && { level: logFilters.level }),
+        ...(logFilters.component && { component: logFilters.component }),
+        ...(logFilters.search && { search: logFilters.search })
+      });
+
+      const response = await fetch(`/api/admin/system/logs?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        setLogs(data.logs);
+        setLogStats(data.stats);
+        setLogPagination(prev => ({
+          ...prev,
+          total: data.pagination.total,
+          totalPages: data.pagination.totalPages
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching logs:', error);
+    }
+  }, [logFilters, logPagination.page, logPagination.limit]);
+
   useEffect(() => {
     if (activeTab === 'logs' && !authError) {
       fetchLogs();
     }
-  }, [activeTab, logFilters, logPagination.page, authError]);
+  }, [activeTab, authError, fetchLogs]);
 
   const fetchSystemStatus = async () => {
     try {
@@ -134,7 +202,7 @@ export default function SystemPage() {
           configuration: {
             environment: 'development',
             version: '1.0.0',
-            buildDate: new Date().toISOString().split('T')[0],
+            buildDate: new Date().toISOString().split('T')[0] || '',
             maintenanceMode: false
           }
         });
@@ -150,7 +218,7 @@ export default function SystemPage() {
       // Initialize default data structure
       let dbData = { success: false, tables: {} };
       let maintenanceData = { maintenanceMode: false };
-      let perfData = { metrics: null, responseTime: 0 };
+      let perfData: PerformanceData = { metrics: undefined, responseTime: 0 };
       
       try {
         // Fetch database status
@@ -200,11 +268,14 @@ export default function SystemPage() {
       setSystemStatus({
         database: {
           status: dbData.success ? 'healthy' : 'error',
-          tables: Object.entries(dbData.tables || {}).map(([name, data]: [string, any]) => ({
-            name,
-            exists: data.exists || false,
-            count: data.count
-          })),
+          tables: Object.entries(dbData.tables || {}).map(([name, data]) => {
+            const tableData = data as DatabaseTableData;
+            return {
+              name,
+              exists: tableData.exists || false,
+              count: tableData.count
+            };
+          }),
           connectionTime: perfData.metrics?.database?.connectionTime || Math.floor(Math.random() * 50) + 10
         },
         performance: {
@@ -217,7 +288,7 @@ export default function SystemPage() {
         configuration: {
           environment: process.env.NODE_ENV || 'development',
           version: '1.0.0',
-          buildDate: new Date().toISOString().split('T')[0],
+          buildDate: new Date().toISOString().split('T')[0] || '',
           maintenanceMode: maintenanceData.maintenanceMode || false
         }
       });
@@ -241,7 +312,7 @@ export default function SystemPage() {
         configuration: {
           environment: 'development',
           version: '1.0.0',
-          buildDate: new Date().toISOString().split('T')[0],
+          buildDate: new Date().toISOString().split('T')[0] || '',
           maintenanceMode: false
         }
       });
@@ -251,42 +322,7 @@ export default function SystemPage() {
     }
   };
 
-  const fetchLogs = async () => {
-    try {
-      // Get admin token
-      const token = localStorage.getItem('admin_token');
-      if (!token) {
-        throw new Error('No admin token found');
-      }
 
-      const params = new URLSearchParams({
-        page: logPagination.page.toString(),
-        limit: logPagination.limit.toString(),
-        ...(logFilters.level && { level: logFilters.level }),
-        ...(logFilters.component && { component: logFilters.component }),
-        ...(logFilters.search && { search: logFilters.search })
-      });
-
-      const response = await fetch(`/api/admin/system/logs?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        setLogs(data.logs);
-        setLogStats(data.stats);
-        setLogPagination(prev => ({
-          ...prev,
-          total: data.pagination.total,
-          totalPages: data.pagination.totalPages
-        }));
-      }
-    } catch (error) {
-      console.error('Error fetching logs:', error);
-    }
-  };
 
   const handleDatabaseSetup = async () => {
     try {
@@ -312,6 +348,7 @@ export default function SystemPage() {
       }
     } catch (error) {
       alert('Error setting up database');
+      console.error('Error setting up database:', error);
     }
   };
 
@@ -339,6 +376,7 @@ export default function SystemPage() {
       }
     } catch (error) {
       alert('Error clearing cache');
+      console.error('Error clearing cache:', error);
     }
   };
 
@@ -379,6 +417,7 @@ export default function SystemPage() {
       }
     } catch (error) {
       alert('Error toggling maintenance mode');
+      console.error('Error toggling maintenance mode:', error);
     }
   };
 
@@ -407,6 +446,7 @@ export default function SystemPage() {
       }
     } catch (error) {
       alert('Error clearing logs');
+      console.error('Error clearing logs:', error);
     }
   };
 
@@ -511,7 +551,7 @@ export default function SystemPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as typeof activeTab)}
                 className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
                   activeTab === tab.id
                     ? 'bg-red-100 text-red-700'
@@ -737,7 +777,7 @@ export default function SystemPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-gray-600">Environment</span>
-                  <span className={`text-xs font-medium px-2 py-1 rounded-full text-xs ${
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${
                     systemStatus.configuration.environment === 'production' 
                       ? 'bg-green-100 text-green-800' 
                       : 'bg-yellow-100 text-yellow-800'

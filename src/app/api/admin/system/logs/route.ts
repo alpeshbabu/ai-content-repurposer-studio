@@ -68,13 +68,13 @@ export async function GET(req: Request) {
     }
 
     if (component) {
-      logs = logs.filter(log => log.component.toLowerCase().includes(component.toLowerCase()));
+      logs = logs.filter(log => log.component?.toLowerCase().includes(component.toLowerCase()));
     }
 
     if (search) {
       logs = logs.filter(log => 
-        log.message.toLowerCase().includes(search.toLowerCase()) ||
-        log.component.toLowerCase().includes(search.toLowerCase())
+        log.message?.toLowerCase().includes(search.toLowerCase()) ||
+        log.component?.toLowerCase().includes(search.toLowerCase())
       );
     }
 
@@ -132,7 +132,7 @@ export async function DELETE(req: Request) {
     // For now, we'll simulate log clearing
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    let deletedCount = Math.floor(Math.random() * 100) + 10;
+    const deletedCount = Math.floor(Math.random() * 100) + 10;
     let message = `Deleted ${deletedCount} log entries`;
 
     if (olderThan) {

@@ -28,7 +28,7 @@
 - **Overage Pricing:** $0.08 per additional content repurpose.
 - **Features:** 
   - Advanced AI model
-  - All major platforms + LinkedIn templates
+  - All platforms + custom templates (Twitter, Instagram, Facebook, LinkedIn, Thread, Tiktok, YouTube, Email, Newsletter)
   - Professional customer support
   - Professional Analytics
 
@@ -41,7 +41,7 @@
 - **Features:** 
   - Advanced AI model
   - Priority Support
-  - All platforms + custom templates (Twitter, Instagram, Facebook, LinkedIn, Thread, Email, Newsletter)
+  - All platforms + custom templates (Twitter, Instagram, Facebook, LinkedIn, Thread, Tiktok, YouTube, Email, Newsletter)
   - Professional Analytics
   - Team collaboration & analytics
 - **Additional Members:** $6.99 per additional team member per month.

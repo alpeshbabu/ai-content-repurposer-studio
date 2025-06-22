@@ -14,7 +14,7 @@ import {
   Edit,
   Share,
   MessageCircle,
-  Template,
+  Layout as Template,
   Repeat
 } from 'lucide-react';
 import { toast } from 'sonner';

@@ -25,6 +25,7 @@ import { DowngradeModal } from './downgrade-modal';
 import { PlanComparisonTable } from './plan-comparison-table';
 import { UsageTracker } from './usage-tracker';
 import { OverageCharges } from './overage-charges';
+import { OverageSettings } from './overage-settings';
 
 interface CurrentSubscriptionData {
   currentPlan: string;
@@ -325,6 +326,12 @@ export function EnhancedSubscriptionManager() {
               </CardContent>
             </Card>
           </div>
+          
+          {/* Overage Settings */}
+          <OverageSettings 
+            currentPlan={currentSubscription.currentPlan}
+            onSettingsChange={fetchSubscriptionData}
+          />
         </TabsContent>
 
         <TabsContent value="team" className="space-y-6">

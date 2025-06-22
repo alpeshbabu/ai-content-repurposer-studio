@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Library,
-  Template,
+  Layout as Template,
   Plus,
   Search,
   Filter,

@@ -106,7 +106,7 @@ class CollaborationService {
               user: {
                 team: {
                   members: {
-                    some: { userId }
+                    some: { userId: userId }
                   }
                 }
               }

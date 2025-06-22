@@ -11,7 +11,8 @@ export const runtime = 'nodejs';
 // Validation schema
 const settingsSchema = z.object({
   brandVoice: z.string().max(1000, 'Brand voice must be less than 1000 characters').optional().nullable(),
-  preferredPlatforms: z.array(z.enum(['twitter', 'linkedin', 'instagram', 'facebook', 'email', 'newsletter', 'thread'])).optional().default([])
+  preferredPlatforms: z.array(z.enum(['twitter', 'linkedin', 'instagram', 'facebook', 'email', 'newsletter', 'thread'])).optional().default([]),
+  overageEnabled: z.boolean().optional().default(false)
 })
 
 export async function GET() {
@@ -65,19 +66,21 @@ export async function POST(req: Request) {
       )
     }
 
-    const { brandVoice, preferredPlatforms } = validation.data
+    const { brandVoice, preferredPlatforms, overageEnabled } = validation.data
 
     const settings = await prisma.settings.upsert({
       where: { userId },
       update: { 
         brandVoice, 
         preferredPlatforms,
+        overageEnabled,
         updatedAt: new Date()
       },
       create: { 
         userId, 
         brandVoice, 
-        preferredPlatforms 
+        preferredPlatforms,
+        overageEnabled
       },
     });
     

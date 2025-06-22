@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import toast from 'react-hot-toast'
+import { toast } from 'sonner'
 
 interface OnboardingStep {
   id: string
@@ -232,10 +232,16 @@ export default function OnboardingFlow() {
     }
   ]
 
+  // Get current step with bounds checking
+  const getCurrentStep = (): OnboardingStep | null => {
+    return steps[currentStep] || null
+  }
+
   const handleNext = () => {
-    if (currentStep < steps.length - 1) {
+    const currentStepData = getCurrentStep()
+    if (currentStep < steps.length - 1 && currentStepData) {
       setCurrentStep(currentStep + 1)
-      setCompletedSteps([...completedSteps, steps[currentStep].id])
+      setCompletedSteps([...completedSteps, currentStepData.id])
     }
   }
 
@@ -256,13 +262,15 @@ export default function OnboardingFlow() {
     setIsVisible(false)
     toast.success('Welcome to AI Content Repurposer Studio!')
     
-    if (steps[currentStep].action?.href) {
-      router.push(steps[currentStep].action!.href!)
+    const currentStepData = getCurrentStep()
+    if (currentStepData?.action?.href) {
+      router.push(currentStepData.action.href)
     }
   }
 
   const handleActionClick = () => {
-    const action = steps[currentStep].action
+    const currentStepData = getCurrentStep()
+    const action = currentStepData?.action
     if (action?.onClick) {
       action.onClick()
     } else if (action?.href) {
@@ -274,16 +282,23 @@ export default function OnboardingFlow() {
 
   if (!isVisible) return null
 
+  const currentStepData = getCurrentStep()
+  
+  // Safety check: if no current step data, don't render
+  if (!currentStepData) {
+    return null
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <Card className="w-full max-w-2xl">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {steps[currentStep].icon}
+              {currentStepData.icon}
               <div>
-                <CardTitle className="text-xl">{steps[currentStep].title}</CardTitle>
-                <CardDescription>{steps[currentStep].description}</CardDescription>
+                <CardTitle className="text-xl">{currentStepData.title}</CardTitle>
+                <CardDescription>{currentStepData.description}</CardDescription>
               </div>
             </div>
             <Button variant="ghost" size="icon" onClick={handleSkip}>
@@ -300,7 +315,7 @@ export default function OnboardingFlow() {
         </CardHeader>
         <CardContent>
           <div className="mb-6">
-            {steps[currentStep].content}
+            {currentStepData.content}
           </div>
           
           <div className="flex items-center justify-between">
@@ -314,9 +329,9 @@ export default function OnboardingFlow() {
             </Button>
             
             <div className="flex gap-2">
-              {steps[currentStep].action && (
+              {currentStepData.action && (
                 <Button variant="outline" onClick={handleActionClick}>
-                  {steps[currentStep].action!.label}
+                  {currentStepData.action.label}
                 </Button>
               )}
               

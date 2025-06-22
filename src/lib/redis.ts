@@ -40,7 +40,7 @@ class RedisClient {
         return
       }
 
-      this.client = new Redis(process.env.REDIS_URL || redisConfig)
+      this.client = new Redis(process.env.REDIS_URL || redisConfig as any)
       
       this.client.on('error', (error) => {
         // Only log Redis errors if not in build phase

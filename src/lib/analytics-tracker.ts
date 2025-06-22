@@ -378,9 +378,9 @@ class AnalyticsTracker {
     ]);
 
     return {
-      contentGenerated: contentStats.find(s => s.status === 'Generated')?._count || 0,
-      contentRepurposed: contentStats.find(s => s.status === 'Repurposed')?._count || 0,
-      platformsUsed: platformStats.map(p => p.platform),
+      contentGenerated: (contentStats.find(s => (s as any).status === 'Generated') as any)?._count || 0,
+      contentRepurposed: (contentStats.find(s => (s as any).status === 'Repurposed') as any)?._count || 0,
+      platformsUsed: (platformStats as any[]).map(p => p.platform),
       templatesUsed: 0,
       collaborationEvents: 0,
       apiCalls: 0
@@ -410,10 +410,10 @@ class AnalyticsTracker {
     });
 
     return {
-      totalViews: contentAnalytics._sum.views || 0,
-      totalRepurposes: contentAnalytics._sum.repurposes || 0,
-      avgViews: Math.round(contentAnalytics._avg.views || 0),
-      avgRepurposes: Math.round(contentAnalytics._avg.repurposes || 0)
+      totalViews: (contentAnalytics as any)._sum?.views || 0,
+      totalRepurposes: (contentAnalytics as any)._sum?.repurposes || 0,
+      avgViews: Math.round((contentAnalytics as any)._avg?.views || 0),
+      avgRepurposes: Math.round((contentAnalytics as any)._avg?.repurposes || 0)
     };
   }
 

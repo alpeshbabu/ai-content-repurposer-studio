@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,14 +16,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   User,
   Mail,
-  Calendar,
   CreditCard,
   Activity,
   FileText,
   Users,
   DollarSign,
   TrendingUp,
-  TrendingDown,
   AlertTriangle,
   CheckCircle,
   XCircle,
@@ -35,19 +33,10 @@ import {
   UserCheck,
   UserX,
   Crown,
-  Shield,
-  Eye,
   Download,
   MessageSquare,
   Settings,
-  BarChart3,
-  Clock,
-  Globe,
-  Phone,
-  MapPin,
   Star,
-  Heart,
-  Zap
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -113,7 +102,7 @@ interface ActivityItem {
   type: string;
   description: string;
   timestamp: string;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 export default function AdminSubscriberDetailPage() {
@@ -139,14 +128,7 @@ export default function AdminSubscriberDetailPage() {
     tags: ''
   });
 
-  useEffect(() => {
-    if (subscriberId) {
-      fetchSubscriberData();
-      fetchActivities();
-    }
-  }, [subscriberId]);
-
-  const fetchSubscriberData = async () => {
+  const fetchSubscriberData = useCallback(async () => {
     try {
       const token = localStorage.getItem('admin_token');
       const response = await fetch(`/api/admin/subscribers/${subscriberId}`, {
@@ -178,9 +160,9 @@ export default function AdminSubscriberDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [subscriberId]);
 
-  const fetchActivities = async () => {
+  const fetchActivities = useCallback(async () => {
     try {
       const token = localStorage.getItem('admin_token');
       const response = await fetch(`/api/admin/subscribers/${subscriberId}/activities`, {
@@ -196,7 +178,14 @@ export default function AdminSubscriberDetailPage() {
     } catch (error) {
       console.error('Error fetching activities:', error);
     }
-  };
+  }, [subscriberId]);
+
+  useEffect(() => {
+    if (subscriberId) {
+      fetchSubscriberData();
+      fetchActivities();
+    }
+  }, [subscriberId, fetchSubscriberData, fetchActivities]);
 
   const handleSave = async () => {
     try {

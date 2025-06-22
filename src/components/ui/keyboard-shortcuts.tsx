@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Command, HelpCircle } from 'lucide-react';
+import { Command } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -29,47 +29,47 @@ interface UseKeyboardShortcutsProps {
 export function useKeyboardShortcuts({ shortcuts = [], enabled = true }: UseKeyboardShortcutsProps = {}) {
   const router = useRouter();
   
-  // Default global shortcuts
-  const defaultShortcuts: KeyboardShortcut[] = [
+  // Default global shortcuts (3-key combinations)
+  const defaultShortcuts: KeyboardShortcut[] = useMemo(() => [
     // Navigation
     {
       key: 'h',
-      modifiers: ['ctrl'],
+      modifiers: ['ctrl', 'shift'],
       description: 'Go to Dashboard',
       action: () => router.push('/dashboard'),
       category: 'navigation'
     },
     {
       key: 'n',
-      modifiers: ['ctrl'],
+      modifiers: ['ctrl', 'shift'],
       description: 'Create New Content',
       action: () => router.push('/dashboard/new'),
       category: 'content'
     },
     {
       key: 'l',
-      modifiers: ['ctrl'],
+      modifiers: ['ctrl', 'shift'],
       description: 'View Content Library',
       action: () => router.push('/dashboard/content'),
       category: 'content'
     },
     {
       key: 's',
-      modifiers: ['ctrl'],
+      modifiers: ['ctrl', 'shift'],
       description: 'Go to Settings',
       action: () => router.push('/dashboard/settings'),
       category: 'navigation'
     },
     {
       key: 't',
-      modifiers: ['ctrl'],
+      modifiers: ['ctrl', 'shift'],
       description: 'Go to Team',
       action: () => router.push('/dashboard/settings/team'),
       category: 'navigation'
     },
     {
       key: 'a',
-      modifiers: ['ctrl'],
+      modifiers: ['ctrl', 'shift'],
       description: 'Go to Analytics',
       action: () => router.push('/dashboard/analytics'),
       category: 'navigation'
@@ -77,7 +77,7 @@ export function useKeyboardShortcuts({ shortcuts = [], enabled = true }: UseKeyb
     // Search
     {
       key: '/',
-      modifiers: ['ctrl'],
+      modifiers: ['ctrl', 'shift'],
       description: 'Focus Search',
       action: () => {
         const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
@@ -90,16 +90,16 @@ export function useKeyboardShortcuts({ shortcuts = [], enabled = true }: UseKeyb
     // General
     {
       key: '?',
-      modifiers: ['shift'],
+      modifiers: ['ctrl', 'shift'],
       description: 'Show Keyboard Shortcuts',
       action: () => {
         // This will be handled by the component
       },
       category: 'general'
     }
-  ];
+  ], [router]);
 
-  const allShortcuts = [...defaultShortcuts, ...shortcuts];
+  const allShortcuts = useMemo(() => [...defaultShortcuts, ...shortcuts], [defaultShortcuts, shortcuts]);
 
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
     if (!enabled) return;
@@ -122,9 +122,9 @@ export function useKeyboardShortcuts({ shortcuts = [], enabled = true }: UseKeyb
       const isKeyMatch = event.key.toLowerCase() === shortcut.key.toLowerCase();
       const modifiers = shortcut.modifiers || [];
       
-      const isCtrlPressed = modifiers.includes('ctrl') && (event.ctrlKey || event.metaKey);
-      const isShiftPressed = modifiers.includes('shift') && event.shiftKey;
-      const isAltPressed = modifiers.includes('alt') && event.altKey;
+      // const isCtrlPressed = modifiers.includes('ctrl') && (event.ctrlKey || event.metaKey);
+      // const isShiftPressed = modifiers.includes('shift') && event.shiftKey;
+      // const isAltPressed = modifiers.includes('alt') && event.altKey;
       
       const requiredModifiersPressed = modifiers.every(modifier => {
         switch (modifier) {
@@ -140,10 +140,10 @@ export function useKeyboardShortcuts({ shortcuts = [], enabled = true }: UseKeyb
         }
       });
 
-      const noExtraModifiers = 
-        (!modifiers.includes('ctrl') && !modifiers.includes('cmd')) || (event.ctrlKey || event.metaKey) &&
-        (!modifiers.includes('shift') || event.shiftKey) &&
-        (!modifiers.includes('alt') || event.altKey);
+      // const noExtraModifiers = 
+      //   (!modifiers.includes('ctrl') && !modifiers.includes('cmd')) || (event.ctrlKey || event.metaKey) &&
+      //   (!modifiers.includes('shift') || event.shiftKey) &&
+      //   (!modifiers.includes('alt') || event.altKey);
 
       if (isKeyMatch && requiredModifiersPressed) {
         event.preventDefault();
@@ -171,7 +171,7 @@ export function KeyboardShortcutsHelp() {
     if (!acc[shortcut.category]) {
       acc[shortcut.category] = [];
     }
-    acc[shortcut.category].push(shortcut);
+    acc[shortcut.category]!.push(shortcut);
     return acc;
   }, {} as Record<string, KeyboardShortcut[]>);
 
@@ -200,10 +200,10 @@ export function KeyboardShortcutsHelp() {
     general: 'General'
   };
 
-  // Listen for ? key to open help
+  // Listen for Ctrl+Shift+? key to open help
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === '?' && event.shiftKey && !open) {
+      if (event.key === '?' && event.shiftKey && (event.ctrlKey || event.metaKey) && !open) {
         event.preventDefault();
         setOpen(true);
       }
@@ -250,7 +250,7 @@ export function KeyboardShortcutsHelp() {
           
           <div className="pt-4 border-t">
             <p className="text-xs text-gray-500 text-center">
-              Press <Badge variant="outline" className="font-mono text-xs mx-1">Shift + ?</Badge> to toggle this dialog
+              Press <Badge variant="outline" className="font-mono text-xs mx-1">Ctrl + Shift + ?</Badge> to toggle this dialog
             </p>
           </div>
         </div>
@@ -280,7 +280,7 @@ export function useContentShortcuts() {
   const contentShortcuts: KeyboardShortcut[] = [
     {
       key: 'e',
-      modifiers: ['ctrl'],
+      modifiers: ['ctrl', 'shift'],
       description: 'Edit Current Content',
       action: () => {
         // Get current content ID from URL or context
@@ -294,7 +294,7 @@ export function useContentShortcuts() {
     },
     {
       key: 'r',
-      modifiers: ['ctrl'],
+      modifiers: ['ctrl', 'shift'],
       description: 'Repurpose Current Content',
       action: () => {
         const repurposeButton = document.querySelector('[data-action="repurpose"]') as HTMLButtonElement;
@@ -306,7 +306,7 @@ export function useContentShortcuts() {
     },
     {
       key: 'c',
-      modifiers: ['ctrl', 'shift'],
+      modifiers: ['ctrl', 'shift', 'alt'],
       description: 'Copy Content to Clipboard',
       action: () => {
         const contentText = document.querySelector('[data-content="original"]')?.textContent;
@@ -326,7 +326,7 @@ export function useDashboardShortcuts() {
   const dashboardShortcuts: KeyboardShortcut[] = [
     {
       key: 'f',
-      modifiers: ['ctrl'],
+      modifiers: ['ctrl', 'shift'],
       description: 'Toggle Filters',
       action: () => {
         const filterButton = document.querySelector('[data-action="toggle-filters"]') as HTMLButtonElement;
@@ -338,7 +338,7 @@ export function useDashboardShortcuts() {
     },
     {
       key: 'g',
-      modifiers: ['ctrl'],
+      modifiers: ['ctrl', 'shift'],
       description: 'Toggle Grid/List View',
       action: () => {
         const viewToggle = document.querySelector('[data-action="toggle-view"]') as HTMLButtonElement;

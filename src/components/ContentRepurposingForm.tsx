@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loader2, AlertCircle, Info, Sparkles, Copy, CheckCircle, FileText, Settings, Zap, Wand2, PenTool, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Loader2, AlertCircle, Info, Sparkles, Copy, CheckCircle, FileText, Settings, Zap, Wand2, PenTool } from 'lucide-react';
 import Link from 'next/link';
 import { PlatformIcon, getPlatformConfig } from '@/lib/platform-icons';
 import { notifications, notificationTemplates } from '@/lib/toast';
@@ -39,19 +39,20 @@ export default function ContentRepurposingForm() {
   const [tone, setTone] = useState('professional');
   const [targetAudience, setTargetAudience] = useState('');
   const [contentType, setContentType] = useState<ContentType>('blog');
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['twitter', 'instagram']);
   const [loading, setLoading] = useState(false);
+  const [loadingUsage, setLoadingUsage] = useState(false);
   const [results, setResults] = useState<RepurposedItem[]>([]);
   const [usageData, setUsageData] = useState<UsageData | null>(null);
   const [subscriptionData, setSubscriptionData] = useState<SubscriptionData | null>(null);
-  const [allowOverage, setAllowOverage] = useState(false);
   const [usageLimitReached, setUsageLimitReached] = useState(false);
-  const [loadingUsage, setLoadingUsage] = useState(true);
-  const [databaseSetupComplete, setDatabaseSetupComplete] = useState(true); // Default to true for better UX
+  const [databaseSetupComplete, setDatabaseSetupComplete] = useState(false);
+  const [showRepurposePrompt, setShowRepurposePrompt] = useState(false);
+  const [generatedContent, setGeneratedContent] = useState<string>('');
+  const [generatedContentId, setGeneratedContentId] = useState<string>('');
+  const [overageEnabled, setOverageEnabled] = useState(false);
+  const [overageRate, setOverageRate] = useState(0.12);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [generatedContent, setGeneratedContent] = useState<string>(''); // Track generated content
-  const [generatedContentId, setGeneratedContentId] = useState<string | null>(null); // Track generated content ID
-  const [showRepurposePrompt, setShowRepurposePrompt] = useState(false); // Show repurpose prompt after generation
 
   // Check system health and database readiness
   useEffect(() => {
@@ -98,14 +99,19 @@ export default function ContentRepurposingForm() {
             // Default platforms for free tier only - STRICT COMPLIANCE
             setSelectedPlatforms(['twitter', 'instagram']);
           }
+          
+          // Set overage enabled status
+          setOverageEnabled(settings?.overageEnabled || false);
         } else {
           // Default platforms for free tier only - STRICT COMPLIANCE  
           setSelectedPlatforms(['twitter', 'instagram']);
+          setOverageEnabled(false);
         }
       } catch (error) {
         console.error('Error fetching user settings:', error);
         // Default platforms for free tier only - STRICT COMPLIANCE
         setSelectedPlatforms(['twitter', 'instagram']);
+        setOverageEnabled(false);
       }
     }
     
@@ -137,6 +143,15 @@ export default function ContentRepurposingForm() {
         
         setUsageData(data.usage);
         setSubscriptionData(data.subscription);
+
+        // Set overage rate based on plan
+        const overageRates = {
+          'free': 0.12,
+          'basic': 0.10,
+          'pro': 0.08,
+          'agency': 0.06
+        };
+        setOverageRate(overageRates[data.subscription.plan as keyof typeof overageRates] || 0.12);
 
         // Check if usage limit is reached
         const isMonthlyLimitReached = 
@@ -226,7 +241,6 @@ export default function ContentRepurposingForm() {
             tone,
             targetAudience,
             contentType,
-            allowOverage,
           }
         : {
             title,
@@ -235,7 +249,6 @@ export default function ContentRepurposingForm() {
             platforms: selectedPlatforms,
             tone,
             targetAudience,
-            allowOverage,
             ...(generatedContentId && { contentId: generatedContentId }), // Pass contentId to update existing content
           };
 
@@ -276,11 +289,6 @@ export default function ContentRepurposingForm() {
       if (data.warning) {
         notifications.error(data.warning, { 
           duration: 8000,
-          style: {
-            background: '#FEF3C7',  // Light yellow background
-            color: '#92400E',       // Amber text color
-            border: '1px solid #F59E0B'
-          },
           icon: '⚠️'
         });
       }
@@ -356,6 +364,7 @@ export default function ContentRepurposingForm() {
       notifications.error('Failed to copy content', {
         description: 'Please try again or copy manually'
       });
+      console.error('Failed to copy content:', error);
     }
   };
 
@@ -371,7 +380,7 @@ export default function ContentRepurposingForm() {
     if (newMode === 'generate') {
       setContent('');
       setGeneratedContent('');
-      setGeneratedContentId(null);
+      setGeneratedContentId('');
     }
   };
 
@@ -425,26 +434,40 @@ export default function ContentRepurposingForm() {
                 You've reached your usage limit for this {usageData?.daily?.remaining === 0 ? "day" : "month"}.
               </p>
               
-              <div className="bg-white/60 rounded-lg p-4 mb-4">
-                <div className="flex items-start space-x-3">
-                  <input
-                    type="checkbox"
-                    id="allow-overage"
-                    checked={allowOverage}
-                    onChange={(e) => setAllowOverage(e.target.checked)}
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded mt-1"
-                  />
-                  <div className="flex-1">
-                    <label htmlFor="allow-overage" className="text-sm font-medium text-amber-900">
-                      I agree to pay ${subscriptionData?.plan && subscriptionData.plan in {'free': 0.12, 'basic': 0.10, 'pro': 0.08, 'agency': 0.06} ? 
-                        {'free': 0.12, 'basic': 0.10, 'pro': 0.08, 'agency': 0.06}[subscriptionData.plan] : 0.12} per additional content repurpose
-                    </label>
-                    <p className="text-xs text-amber-700 mt-1">
-                      Overage charges will be billed at the end of your billing period
-                    </p>
+              {overageEnabled ? (
+                <div className="bg-white/60 rounded-lg p-4 mb-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <CheckCircle className="h-3 w-3 text-green-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-green-900">
+                        Overage charges enabled
+                      </p>
+                      <p className="text-xs text-green-700 mt-1">
+                        Additional content will be charged at ${overageRate.toFixed(2)} per repurpose or generation from keywords. 
+                        You can continue creating content beyond your plan limits.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-white/60 rounded-lg p-4 mb-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-5 h-5 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <AlertCircle className="h-3 w-3 text-amber-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-amber-900">
+                        Overage charges disabled
+                      </p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        Enable overage charges in your subscription settings to continue creating content beyond your plan limits.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               
               <Link 
                 href="/dashboard/settings/subscription" 
@@ -661,13 +684,19 @@ export default function ContentRepurposingForm() {
               <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm text-blue-900">
-                  Your content will be repurposed for: <span className="font-medium">{selectedPlatforms.map(p => p === 'thread' ? 'Twitter Thread' : p.charAt(0).toUpperCase() + p.slice(1)).join(', ')}</span>
+                  <span className="font-medium">Repurposing for your preferred platforms:</span>{' '}
+                  <span className="font-medium">{selectedPlatforms.map(p => p === 'thread' ? 'Twitter Thread' : p.charAt(0).toUpperCase() + p.slice(1)).join(', ')}</span>
+                </p>
+                <p className="text-xs text-blue-700 mt-2">
+                  💡 <strong>How it works:</strong> If you have preferred platforms selected in settings, content will be repurposed only for those platforms. 
+                  If no preferences are set, all platforms available for your subscription tier will be used.
                 </p>
                 <p className="text-xs text-blue-700 mt-1">
                   To change your preferred platforms, visit your{' '}
                   <Link href="/dashboard/settings" className="font-medium underline hover:text-blue-800">
                     settings page
                   </Link>
+                  {' '}or leave preferences empty to use all available platforms.
                 </p>
               </div>
             </div>
@@ -678,7 +707,7 @@ export default function ContentRepurposingForm() {
         <div className="flex justify-center pt-4">
           <button
             type="submit"
-            disabled={loading || (usageLimitReached && !allowOverage)}
+            disabled={loading || (usageLimitReached && !overageEnabled)}
             className="group relative px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-indigo-600 disabled:hover:to-purple-600 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
           >
             <div className="flex items-center space-x-3">
@@ -767,7 +796,7 @@ export default function ContentRepurposingForm() {
                 setTargetAudience('');
                 setResults([]);
                 setGeneratedContent('');
-                setGeneratedContentId(null);
+                setGeneratedContentId('');
                 setShowRepurposePrompt(false);
                 setWorkflowMode('generate');
               }}

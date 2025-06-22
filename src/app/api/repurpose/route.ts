@@ -246,9 +246,30 @@ export async function POST(req: Request) {
         }
       }
       
+      // Check if Settings table exists and fetch user settings
+      const settingsTableExists = await tableExists('Settings');
+      let userBrandVoice = brandVoice; // Use provided brand voice or default to user's saved one
+      let preferredPlatforms: string[] = [];
+      let overageEnabled = false; // Check if user has enabled overage in settings
+      
+      if (settingsTableExists) {
+        try {
+          const settings = await withPrisma(async (prisma) => {
+            return await prisma.settings.findUnique({ where: { userId } });
+          });
+          if (!userBrandVoice) {
+            userBrandVoice = settings?.brandVoice || '';
+          }
+          preferredPlatforms = settings?.preferredPlatforms || [];
+          overageEnabled = settings?.overageEnabled || false;
+        } catch (error) {
+          console.error('Error fetching user settings:', error);
+        }
+      }
+      
       // Check if user has overage consent and automatically allow overage if they do
       const hasOverageConsent = user.overageConsent === true;
-      const shouldAllowOverage = allowOverage || hasOverageConsent;
+      const shouldAllowOverage = allowOverage || hasOverageConsent || overageEnabled;
 
       // If either limit is exceeded and overage is not allowed, return 402
       if ((isMonthlyExceeded || isDailyExceeded) && !shouldAllowOverage) {
@@ -256,13 +277,14 @@ export async function POST(req: Request) {
           JSON.stringify({
             error: 'Usage limit exceeded',
             message: isMonthlyExceeded 
-              ? 'Monthly usage limit exceeded. Please upgrade your plan or enable overage charges.' 
+              ? 'Monthly usage limit exceeded. Please upgrade your plan or enable overage charges in your settings.' 
               : 'Daily usage limit exceeded. Please upgrade your plan or try again tomorrow.',
             limitType: isMonthlyExceeded ? 'monthly' : 'daily',
             currentUsage: user.usageThisMonth,
             limit: monthlyLimit,
             plan: plan,
-            hasOverageConsent: hasOverageConsent
+            hasOverageConsent: hasOverageConsent,
+            overageEnabled: overageEnabled
           }),
           { 
             status: 402, // Payment Required
@@ -287,25 +309,6 @@ export async function POST(req: Request) {
         }
       }
 
-      // Check if Settings table exists and fetch user settings
-      const settingsTableExists = await tableExists('Settings');
-      let userBrandVoice = brandVoice; // Use provided brand voice or default to user's saved one
-      let preferredPlatforms: string[] = [];
-      
-      if (settingsTableExists) {
-        try {
-          const settings = await withPrisma(async (prisma) => {
-            return await prisma.settings.findUnique({ where: { userId } });
-          });
-          if (!userBrandVoice) {
-            userBrandVoice = settings?.brandVoice || '';
-          }
-          preferredPlatforms = settings?.preferredPlatforms || [];
-        } catch (error) {
-          console.error('Error fetching user settings:', error);
-        }
-      }
-      
       // Filter platforms based on the user's subscription plan
       let availablePlatforms: Platform[] = [];
       

@@ -24,7 +24,9 @@ export const platformSchema = z.enum([
   "facebook",
   "email",
   "newsletter",
-  "thread"
+  "thread",
+  "tiktok",
+  "youtube"
 ])
 
 // Content Generation Schema

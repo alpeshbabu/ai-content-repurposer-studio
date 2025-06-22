@@ -102,6 +102,10 @@ export default function SettingsForm({ initialSettings, subscriptionPlan = 'free
       </div>
       <div className="space-y-2">
         <label className="text-sm font-medium">Preferred Platforms</label>
+        <p className="text-xs text-gray-600 mb-3">
+          💡 <strong>How this works:</strong> Select your preferred platforms for content repurposing. 
+          If no platforms are selected, content will be repurposed for all platforms available in your subscription tier.
+        </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {availablePlatforms.map((platform) => (
             <label key={platform} className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-gray-50 transition-colors">
@@ -116,6 +120,19 @@ export default function SettingsForm({ initialSettings, subscriptionPlan = 'free
             </label>
           ))}
         </div>
+        
+        {/* Platform selection guidance */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
+          <div className="text-xs text-blue-800">
+            <p className="font-medium mb-1">Platform Selection Guide:</p>
+            <ul className="space-y-1 text-blue-700">
+              <li>• <strong>Select specific platforms</strong> to focus your content repurposing</li>
+              <li>• <strong>Leave empty</strong> to use all available platforms for your tier</li>
+              <li>• You can always change these preferences later</li>
+            </ul>
+          </div>
+        </div>
+        
         {subscriptionPlan === 'free' && (
           <p className="text-xs text-gray-500 mt-2">
             Free plan includes Twitter and Instagram. <a href="/dashboard/settings/subscription" className="text-indigo-600 hover:text-indigo-700">Upgrade</a> to access more platforms.
