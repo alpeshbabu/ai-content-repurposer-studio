@@ -4,17 +4,16 @@
 
 ### A. Free Plan
 - **Price:** $0/month
-- **Limit:** 5 content repurposes per month.
+- **Limit:** 5 content generation or repurposes or mix of both per month.
 - **Overage Pricing:** $0.12 per additional content repurpose.
 - **Features:** 
   - Basic AI model
-  - No daily limit
   - Twitter & Instagram templates
   - No credit card required for base usage
 
 ### B. Basic Plan
 - **Price:** $6.99/month
-- **Limit:** 2 content repurposes per day (60/month).
+- **Limit:** 60 content generation or repurposes or mix of both per month.
 - **Overage Pricing:** $0.10 per additional content repurpose.
 - **Features:** 
   - Standard AI model
@@ -24,7 +23,7 @@
 
 ### C. Pro Plan
 - **Price:** $14.99/month
-- **Limit:** 5 content repurposes per day (150/month).
+- **Limit:** 150 content generation or repurposes or mix of both per month.
 - **Overage Pricing:** $0.08 per additional content repurpose.
 - **Features:** 
   - Advanced AI model
@@ -34,7 +33,7 @@
 
 ### D. Agency Plan
 - **Price:** $29.99/month
-- **Limit:** 450 content repurposes per month
+- **Limit:** 450 content generation or repurposes or mix of both per month.
 - **Daily Limit:** No daily limit
 - **Team Members:** Up to 3 team members included
 - **Overage Pricing:** $0.06 per additional content repurpose.
@@ -44,7 +43,7 @@
   - All platforms + custom templates (Twitter, Instagram, Facebook, LinkedIn, Thread, Tiktok, YouTube, Email, Newsletter)
   - Professional Analytics
   - Team collaboration & analytics
-- **Additional Members:** $6.99 per additional team member per month.
+- **Additional Members:** Add additional member for just $6.99/month.
 
 ### E. API Access (Developer)
 - **Price:** $0.10 per repurposing request (pay-as-you-go, for API only).

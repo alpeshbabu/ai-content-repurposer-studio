@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { aiService, ContentType, AIProvider } from '@/lib/ai-service';
-import { incrementUsage, recordOverageCharge, SubscriptionPlan, SUBSCRIPTION_LIMITS, DAILY_LIMITS } from '@/lib/subscription';
+import { incrementUsage, recordOverageCharge, SubscriptionPlan, SUBSCRIPTION_LIMITS } from '@/lib/subscription';
 import { tableExists, validateUserTable } from '@/lib/db-setup';
 import { z } from 'zod';
+import { canUserRepurpose } from '@/lib/subscription';
 
 // Validation schema
 const generateContentSchema = z.object({
@@ -133,73 +134,17 @@ export async function POST(req: Request) {
         );
       }
       
-      // Check if monthly limit is exceeded
-      const monthlyLimit = SUBSCRIPTION_LIMITS[plan];
-      const isMonthlyExceeded = user.usageThisMonth >= monthlyLimit && monthlyLimit !== Infinity;
+      // Check if user can repurpose content
+      const canGenerate = await canUserRepurpose(userId);
       
-      // Check if daily limit is exceeded
-      let isDailyExceeded = false;
-      const dailyLimit = DAILY_LIMITS[plan];
-      
-      // Check if DailyUsage table exists
-      const dailyUsageTableExists = await tableExists('DailyUsage');
-      
-      if (dailyLimit !== Infinity && dailyUsageTableExists) {
-        try {
-          const today = new Date(new Date().setHours(0, 0, 0, 0));
-          
-          const dailyUsageResult = await prisma.$queryRawUnsafe<{ count: number }[]>(
-            `SELECT "count" FROM "DailyUsage" 
-             WHERE "userId" = $1 AND "date" = $2 
-             LIMIT 1`,
-            userId,
-            today.toISOString()
-          );
-          
-          const dailyUsed = dailyUsageResult && dailyUsageResult.length > 0 
-            ? Number(dailyUsageResult[0].count) 
-            : 0;
-            
-          isDailyExceeded = dailyUsed >= dailyLimit;
-        } catch (error) {
-          console.error('Error checking daily usage:', error);
-          isDailyExceeded = false;
-        }
-      }
-      
-      // If either limit is exceeded and overage is not allowed, return 402
-      if ((isMonthlyExceeded || isDailyExceeded) && !allowOverage) {
-        return new NextResponse(
-          JSON.stringify({
-            error: 'Usage limit exceeded',
-            message: isMonthlyExceeded 
-              ? 'Monthly usage limit exceeded. Please upgrade your plan or enable overage charges.' 
-              : 'Daily usage limit exceeded. Please upgrade your plan or try again tomorrow.',
-            limitType: isMonthlyExceeded ? 'monthly' : 'daily',
-            currentUsage: user.usageThisMonth,
-            limit: monthlyLimit,
-            plan: plan
-          }),
+      if (!canGenerate) {
+        return NextResponse.json(
           { 
-            status: 402, // Payment Required
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Subscription-Required': 'true',
-              'X-Allow-Overage': 'true',
-              'X-Limit-Type': isMonthlyExceeded ? 'monthly' : 'daily'
-            }
-          }
+            error: 'Usage limit exceeded',
+            message: 'Monthly usage limit exceeded. Please upgrade your plan or enable overage charges in your settings.'
+          },
+          { status: 403 }
         );
-      }
-      
-      // If limit is exceeded but overage is allowed, record the charge
-      if ((isMonthlyExceeded || isDailyExceeded) && allowOverage) {
-        const overageChargeTableExists = await tableExists('OverageCharge');
-        if (overageChargeTableExists) {
-          await recordOverageCharge(userId, 1); // 1 content generation
-        } else {
-          console.log('OverageCharge table does not exist, skipping overage recording');
-        }
       }
 
       // Check if Settings table exists and fetch user settings for brand voice
@@ -345,9 +290,9 @@ export async function POST(req: Request) {
         },
         usage: {
           currentUsage: user.usageThisMonth + 1,
-          monthlyLimit: monthlyLimit === Infinity ? null : monthlyLimit,
+          monthlyLimit: SUBSCRIPTION_LIMITS[plan],
           plan: plan,
-          remainingUsage: monthlyLimit === Infinity ? null : Math.max(0, monthlyLimit - user.usageThisMonth - 1)
+          remainingUsage: Math.max(0, SUBSCRIPTION_LIMITS[plan] - user.usageThisMonth - 1)
         }
       };
 

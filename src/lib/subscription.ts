@@ -6,9 +6,21 @@ export interface UsageInfo {
   used: number
   limit: number
   isExceeded: boolean
-  dailyUsed?: number
-  dailyLimit?: number
-  isDailyExceeded?: boolean
+}
+
+export interface SubscriptionUsage {
+  monthly: number
+  monthlyLimit: number
+  monthlyRemaining: number
+  totalUsed: number
+  isOverLimit: boolean
+  plan: SubscriptionPlan
+}
+
+export interface UsageResult {
+  canUse: boolean
+  reason?: string
+  usageDetails: SubscriptionUsage
 }
 
 // Monthly limits - MUST match SUBSCRIPTION.md exactly
@@ -17,30 +29,20 @@ export const SUBSCRIPTION_LIMITS = {
   basic: 60,
   pro: 150,
   agency: 450
-}
+} as const;
 
-// Daily limits
-export const DAILY_LIMITS = {
-  free: Infinity, // No daily limit, only monthly
-  basic: 2,
-  pro: 5,
-  agency: Infinity // No daily limit for agency plan
-}
-
-// Overage pricing per content repurpose
+// Overage pricing per additional use
 export const OVERAGE_PRICING = {
-  free: 0.12,
-  basic: 0.10,
-  pro: 0.08,
-  agency: 0.06
-}
+  free: 0.12,   // $0.12 per overage for free
+  basic: 0.10,  // $0.10 per overage for basic
+  pro: 0.08,    // $0.08 per overage for pro
+  agency: 0.06  // $0.06 per overage for agency
+} as const;
 
 /**
  * Get user's usage information for the current month
  */
 export async function getUserUsage(userId: string): Promise<UsageInfo> {
-  const today = new Date(new Date().setHours(0, 0, 0, 0)); // Today at midnight
-  
   const user = await prisma.user.findUnique({
     where: { id: userId }
   });
@@ -49,170 +51,85 @@ export async function getUserUsage(userId: string): Promise<UsageInfo> {
     throw new Error('User not found');
   }
 
-  let dailyUsed = 0;
-  
-  try {
-    // Check if table exists
-    try {
-      await prisma.$executeRawUnsafe(`SELECT 1 FROM "DailyUsage" LIMIT 1`);
-    } catch (error) {
-      console.log('DailyUsage table may not exist, skipping daily usage check');
-    }
-    
-    // Use dynamic query instead of model-based query
-    const dailyUsageResult = await prisma.$queryRawUnsafe<{ count: number }[]>(
-      `SELECT "count" FROM "DailyUsage" 
-       WHERE "userId" = $1 AND "date" = $2 
-       LIMIT 1`,
-      userId,
-      today.toISOString()
-    );
-    
-    if (dailyUsageResult && dailyUsageResult.length > 0) {
-      dailyUsed = Number(dailyUsageResult[0].count);
-    }
-  } catch (error) {
-    console.error('[DAILY_USAGE_ERROR]', error);
-    // Continue execution even if this fails
-  }
+  // Daily usage tracking has been removed
 
   const plan = user.subscriptionPlan as SubscriptionPlan;
   const limit = SUBSCRIPTION_LIMITS[plan];
   const used = user.usageThisMonth;
   
-  // Get daily usage information
-  const dailyLimit = DAILY_LIMITS[plan];
-  const isDailyExceeded = dailyUsed >= dailyLimit;
-
+  // Daily limits have been removed - only monthly limits are used
   return {
     used,
     limit,
-    isExceeded: used >= limit,
-    dailyUsed,
-    dailyLimit,
-    isDailyExceeded
+    isExceeded: used >= limit
   };
 }
 
 /**
- * Check if user can perform a repurposing operation, with fallback for when DailyUsage table doesn't exist
+ * Check if user can perform a repurposing operation, using only monthly limits
  */
-export async function canRepurpose(userId: string): Promise<boolean> {
+export async function canUserRepurpose(userId: string): Promise<boolean> {
   try {
-    // First check if monthly limit is exceeded
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        subscriptionPlan: true,
-        usageThisMonth: true
-      }
+      include: { subscription: true }
     });
-    
-    if (!user) {
-      throw new Error('User not found');
-    }
-    
-    const plan = user.subscriptionPlan as SubscriptionPlan;
+
+    if (!user) return false;
+
+    const plan = (user.subscription?.tier || 'free') as SubscriptionPlan;
     const monthlyLimit = SUBSCRIPTION_LIMITS[plan];
-    const isMonthlyExceeded = user.usageThisMonth >= monthlyLimit;
-    
-    // If monthly limit is exceeded, no need to check daily
-    if (isMonthlyExceeded) {
-      return false;
+    const monthlyUsed = user.usageThisMonth || 0;
+
+    // If monthly limit is exceeded, check if overage is allowed
+    if (monthlyUsed >= monthlyLimit) {
+      return user.overageConsent || false;
     }
-    
-    // Check daily limit
-    try {
-      const today = new Date(new Date().setHours(0, 0, 0, 0));
-      const dailyLimit = DAILY_LIMITS[plan];
-      
-      // If there's no daily limit, we're good to go
-      if (dailyLimit === Infinity) {
-        return true;
-      }
-      
-      // Try to query the DailyUsage table
-      const dailyUsage = await prisma.dailyUsage.findUnique({
-        where: {
-          userId_date: {
-            userId,
-            date: today
-          }
-        }
-      });
-      
-      const dailyUsed = dailyUsage?.count || 0;
-      return dailyUsed < dailyLimit;
-    } catch (error) {
-      // If there's an error with DailyUsage table, assume daily limit is not exceeded
-      console.error('Error checking daily usage (falling back to monthly only):', error);
-      return true; // Since we already checked monthly limit
-    }
+
+    return true;
   } catch (error) {
-    console.error('Error checking if user can repurpose:', error);
+    console.error('Error checking user repurpose ability:', error);
     return false;
   }
 }
 
 /**
- * Increment user's usage count for the current month and day
+ * Increment user's usage count
  */
-export async function incrementUsage(userId: string): Promise<void> {
-  const today = new Date(new Date().setHours(0, 0, 0, 0)); // Today at midnight
-  
-  // Increment monthly usage
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      usageThisMonth: {
-        increment: 1
-      }
-    }
-  });
-  
-  // Increment daily usage
+export async function incrementUsage(
+  userId: string, 
+  chargeOverage = false
+): Promise<void> {
   try {
-    await prisma.dailyUsage.upsert({
-      where: {
-        userId_date: {
-          userId,
-          date: today
+    await prisma.$transaction(async (tx) => {
+      // Update monthly usage
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          usageThisMonth: {
+            increment: 1
+          }
         }
-      },
-      create: {
-        userId,
-        date: today,
-        count: 1
-      },
-      update: {
-        count: {
-          increment: 1
-        }
-      }
+      });
     });
   } catch (error) {
-    console.error('Error updating daily usage:', error);
-    // Continue without failing - daily usage tracking is not critical
+    console.error('Error updating usage:', error);
   }
 }
 
 /**
- * Reset all users' usage counts (to be called on the 1st of each month)
+ * Reset monthly usage counts at the start of each month
  */
-export async function resetAllUsageCounts(): Promise<void> {
-  // Reset monthly usage for all users
-  await prisma.user.updateMany({
-    data: {
-      usageThisMonth: 0
-    }
-  });
-  
-  // Try to delete all daily usage records
+export async function resetMonthlyUsage(): Promise<void> {
   try {
-    await prisma.$executeRawUnsafe(`DELETE FROM "DailyUsage"`);
+    await prisma.user.updateMany({
+      data: {
+        usageThisMonth: 0
+      }
+    });
+    console.log('Monthly usage counts reset successfully');
   } catch (error) {
-    console.error('Error resetting daily usage counts:', error);
-    // Continue execution even if this fails
+    console.error('Error resetting monthly usage counts:', error);
   }
 }
 
@@ -283,4 +200,35 @@ export async function recordOverageCharge(
 // Helper function to generate CUID-like IDs
 function generateId(): string {
   return 'cuid_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+}
+
+export async function getUserSubscriptionUsage(userId: string): Promise<SubscriptionUsage> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { subscription: true }
+  });
+
+  if (!user || !user.subscription) {
+    return {
+      monthly: 0,
+      monthlyLimit: SUBSCRIPTION_LIMITS.free,
+      monthlyRemaining: SUBSCRIPTION_LIMITS.free,
+      totalUsed: 0,
+      isOverLimit: false,
+      plan: 'free'
+    };
+  }
+
+  const plan = user.subscription.tier as SubscriptionPlan;
+  const monthlyLimit = SUBSCRIPTION_LIMITS[plan];
+  const monthly = user.usageThisMonth || 0;
+
+  return {
+    monthly,
+    monthlyLimit,
+    monthlyRemaining: Math.max(0, monthlyLimit - monthly),
+    totalUsed: monthly,
+    isOverLimit: monthly >= monthlyLimit,
+    plan
+  };
 } 

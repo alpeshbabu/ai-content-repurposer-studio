@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { Sparkles } from 'lucide-react';
+import { getAllPlans } from '@/lib/pricing-config';
 
 export const metadata: Metadata = {
   title: 'Terms of Service - AI Content Repurposer Studio',
@@ -8,6 +9,8 @@ export const metadata: Metadata = {
 };
 
 export default function TermsPage() {
+  const plans = getAllPlans();
+  
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -68,10 +71,22 @@ export default function TermsPage() {
             <h3 className="text-xl font-medium text-gray-800 mt-6 mb-3">4.1 Subscription Tiers</h3>
             <p className="text-gray-700 mb-4">We offer the following subscription plans:</p>
             <ul className="list-disc list-inside text-gray-700 mb-6 space-y-2">
-              <li><strong>Free Plan:</strong> 5 content repurposes per month, $0.12 per overage</li>
-              <li><strong>Basic Plan:</strong> $6.99/month, 60 repurposes per month, $0.10 per overage</li>
-              <li><strong>Pro Plan:</strong> $14.99/month, 150 repurposes per month, $0.08 per overage</li>
-              <li><strong>Agency Plan:</strong> $29.99/month, 450 repurposes per month, team features, $0.06 per overage</li>
+              {plans.map((plan) => (
+                <li key={plan.id}>
+                  <strong>{plan.name} Plan:</strong>{' '}
+                  {plan.price === 0 ? (
+                    <>
+                      {plan.monthlyLimit === -1 ? 'Unlimited' : plan.monthlyLimit} content repurposes per month, 
+                      ${plan.overagePrice.toFixed(2)} per overage
+                    </>
+                  ) : (
+                    <>
+                      ${plan.price}/month, {plan.monthlyLimit === -1 ? 'unlimited' : plan.monthlyLimit} repurposes per month
+                      {plan.teamMembers > 1 && ', team features'}, ${plan.overagePrice.toFixed(2)} per overage
+                    </>
+                  )}
+                </li>
+              ))}
             </ul>
 
             <h3 className="text-xl font-medium text-gray-800 mt-6 mb-3">4.2 Billing and Payment</h3>
@@ -85,7 +100,7 @@ export default function TermsPage() {
 
             <h3 className="text-xl font-medium text-gray-800 mt-6 mb-3">4.3 Usage Limits</h3>
             <p className="text-gray-700 mb-6">
-              Each plan includes specific monthly and daily limits. Exceeding these limits will incur overage charges unless you opt-out of overage billing, in which case service will be temporarily suspended until the next billing period or plan upgrade.
+              Each plan includes specific monthly limits. Exceeding these limits will incur overage charges unless you opt-out of overage billing, in which case service will be temporarily suspended until the next billing period or plan upgrade.
             </p>
 
             <h2 className="text-2xl font-semibold text-gray-900 mt-8 mb-4">5. Content and Intellectual Property</h2>

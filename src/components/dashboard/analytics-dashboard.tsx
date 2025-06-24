@@ -598,7 +598,7 @@ function UsageAnalyticsView({ data }: { data: UsageAnalytics | null }) {
             <Progress value={data.usagePercentage} className="w-full" />
             <div className="flex justify-between text-sm text-muted-foreground">
               <span>Used this month</span>
-              <span>{data.usagePercentage}%</span>
+              <span>{data.usagePercentage.toFixed(2)}%</span>
             </div>
             <Badge variant={data.plan === 'free' ? 'secondary' : 'default'}>
               {data.plan?.toUpperCase()} Plan

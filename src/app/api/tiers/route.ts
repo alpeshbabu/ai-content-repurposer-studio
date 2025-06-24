@@ -28,24 +28,20 @@ const TIER_FEATURES = {
     price: 0
   },
   basic: {
+    name: 'Basic',
+    price: 6.99,
     monthlyLimit: 60,
-    dailyLimit: 2,
-    platforms: ['twitter', 'instagram', 'facebook'],
-    aiModel: 'standard',
-    analytics: true,
-    teamCollaboration: false,
-    prioritySupport: false,
-    price: 6.99
+    dailyLimit: -1, // No daily limit
+    features: ['Standard AI model', 'Twitter, Instagram & Facebook templates', 'Basic customer support', 'Basic Analytics'],
+    overageRate: 0.10
   },
   pro: {
+    name: 'Pro',
+    price: 14.99,
     monthlyLimit: 150,
-    dailyLimit: 5,
-    platforms: ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'tiktok', 'youtube', 'email', 'newsletter'],
-    aiModel: 'advanced',
-    analytics: true,
-    teamCollaboration: false,
-    prioritySupport: true,
-    price: 14.99
+    dailyLimit: -1, // No daily limit
+    features: ['Advanced AI model', 'All platforms + custom templates', 'Professional customer support', 'Professional Analytics'],
+    overageRate: 0.08
   },
   agency: {
     monthlyLimit: 450,

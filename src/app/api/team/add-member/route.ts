@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { addTeamMemberBilling } from '@/lib/team-billing';
 
 export async function POST(req: Request) {
   try {
@@ -119,6 +120,35 @@ export async function POST(req: Request) {
 
     console.log(`Team member added: ${newMember.email} by ${currentUser.email}`);
 
+    // Handle billing for additional team members (Agency plan only)
+    let billingResult = null;
+    if (currentUser.subscriptionPlan === 'agency' && currentUser.stripeCustomerId) {
+      try {
+        // Get user's subscription
+        const subscription = await prisma.subscription.findFirst({
+          where: {
+            userId: currentUser.id,
+            status: 'active'
+          }
+        });
+
+        if (subscription && subscription.stripeSubscriptionId) {
+          billingResult = await addTeamMemberBilling(
+            currentUser.id,
+            currentUser.stripeCustomerId,
+            subscription.stripeSubscriptionId
+          );
+          
+          if (!billingResult.success) {
+            console.warn('[TEAM_MEMBER_BILLING_WARNING]', billingResult.message);
+          }
+        }
+      } catch (billingError) {
+        console.error('[TEAM_MEMBER_BILLING_ERROR]', billingError);
+        // Don't fail the entire request if billing fails
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Team member added successfully',
@@ -128,7 +158,11 @@ export async function POST(req: Request) {
         email: newMember.email,
         role: newMember.role,
         createdAt: newMember.createdAt
-      }
+      },
+      billing: billingResult ? {
+        success: billingResult.success,
+        message: billingResult.message
+      } : null
     });
 
   } catch (error) {

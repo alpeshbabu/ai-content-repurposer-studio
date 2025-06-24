@@ -249,8 +249,14 @@ export default function AddMemberModal({
               </div>
             )}
 
-            <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-md">
-              💡 The team member account will be created immediately. Share the login credentials securely with the new member.
+            <div className="space-y-3">
+              <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-md">
+                💡 The team member account will be created immediately. Share the login credentials securely with the new member.
+              </div>
+              
+              <div className="text-sm text-amber-700 bg-amber-50 p-3 rounded-md border border-amber-200">
+                💰 <strong>Billing Notice:</strong> Add additional member for just $6.99/month beyond the 3 included in your Agency plan. This charge will appear on your next invoice.
+              </div>
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">

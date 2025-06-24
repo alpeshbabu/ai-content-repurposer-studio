@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { CacheService } from '@/lib/cache'
 import { validateUserTable, ensureDailyUsageTableExists, tableExists } from '@/lib/db-setup'
-import { updateSubscription, SUBSCRIPTION_LIMITS, DAILY_LIMITS } from '@/lib/subscription'
+import { updateSubscription, SUBSCRIPTION_LIMITS } from '@/lib/subscription'
 
 // Mock the dependencies
 jest.mock('next-auth')

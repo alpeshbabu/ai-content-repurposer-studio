@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { resetAllUsageCounts } from '@/lib/subscription';
+import { resetMonthlyUsage } from '@/lib/subscription';
 
 // This route can be triggered by a cron job service like Vercel Cron Jobs
 // to reset all users' usage counts at the beginning of each month
@@ -58,7 +58,7 @@ export async function GET(req: Request) {
     );
 
     // Reset all usage counts
-    await resetAllUsageCounts();
+    await resetMonthlyUsage();
 
     return NextResponse.json({
       success: true,

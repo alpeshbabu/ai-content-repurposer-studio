@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { validateAdminRequest } from '@/lib/admin-auth';
 import { validateSubscriptionRequirements } from '@/lib/validate-subscription';
-import { SUBSCRIPTION_LIMITS, DAILY_LIMITS, OVERAGE_PRICING } from '@/lib/subscription';
+import { SUBSCRIPTION_LIMITS, OVERAGE_PRICING } from '@/lib/subscription';
 
 export async function GET(req: Request) {
   try {
@@ -19,7 +19,6 @@ export async function GET(req: Request) {
       ...validationResult,
       configuration: {
         subscriptionLimits: SUBSCRIPTION_LIMITS,
-        dailyLimits: DAILY_LIMITS,
         overagePricing: OVERAGE_PRICING
       }
     });

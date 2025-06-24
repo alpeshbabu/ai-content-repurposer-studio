@@ -116,6 +116,8 @@ model User {
   commentReplies          CommentReply[]
   contentChanges          ContentChange[]
   auditLogs               AuditLog[]
+  billingNotifications    BillingNotification[]
+  teamMemberBillings      TeamMemberBilling[]
 
   // Performance indexes
   @@index([subscriptionPlan])
@@ -137,6 +139,7 @@ model Team {
   memberLimit Int      @default(3)
   members     User[]
   invitations TeamInvitation[]
+  billings    TeamMemberBilling[]
 }
 
 model TeamInvitation {
@@ -545,4 +548,44 @@ model AuditLog {
   @@index([action])
   @@index([resource])
   @@index([createdAt])
+}
+
+// Team Member Billing Models
+model BillingNotification {
+  id            String    @id @default(cuid())
+  userId        String
+  type          String    // upcoming_team_member_charges, payment_reminder, etc.
+  amount        Float
+  description   String?
+  scheduledDate DateTime?
+  processedAt   DateTime?
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([scheduledDate])
+}
+
+model TeamMemberBilling {
+  id                       String   @id @default(cuid())
+  teamId                   String
+  userId                   String
+  billingMonth             Int
+  billingYear              Int
+  memberCount              Int
+  additionalMembers        Int
+  chargeAmount             Float
+  stripeSubscriptionItemId String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  team                     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, billingMonth, billingYear])
+  @@index([teamId])
+  @@index([userId])
+  @@index([billingMonth, billingYear])
 }

@@ -7,17 +7,15 @@ export const PLAN_DETAILS = {
     name: 'Free',
     price: 0,
     limits: {
-      monthlyLimit: 10,
-      dailyLimit: 2,
-      overageRate: 0
+      monthlyLimit: 5,
+      overageRate: 0.12
     }
   },
-  starter: {
-    name: 'Starter',
+  basic: {
+    name: 'Basic',
     price: 6.99,
     limits: {
-      monthlyLimit: 50,
-      dailyLimit: 10,
+      monthlyLimit: 60,
       overageRate: 0.10
     }
   },
@@ -25,17 +23,15 @@ export const PLAN_DETAILS = {
     name: 'Pro',
     price: 14.99,
     limits: {
-      monthlyLimit: 200,
-      dailyLimit: 30,
+      monthlyLimit: 150,
       overageRate: 0.08
     }
   },
-  enterprise: {
-    name: 'Enterprise',
+  agency: {
+    name: 'Agency',
     price: 29.99,
     limits: {
-      monthlyLimit: 1000,
-      dailyLimit: 100,
+      monthlyLimit: 450,
       overageRate: 0.06
     }
   }
@@ -138,19 +134,6 @@ class BillingManager {
 
       const { totalUsage, planLimits } = usage;
       const newTotalUsage = totalUsage + 1;
-
-      // Check daily limits (if applicable)
-      if (planLimits.dailyLimit > 0) {
-        const todayUsage = await this.getTodayUsage(userId);
-        if (todayUsage >= planLimits.dailyLimit) {
-          return {
-            allowed: false,
-            reason: `Daily limit of ${planLimits.dailyLimit} reached`,
-            currentUsage: todayUsage,
-            limit: planLimits.dailyLimit
-          };
-        }
-      }
 
       // Check if this will cause overage
       const willCauseOverage = newTotalUsage > planLimits.monthlyLimit;

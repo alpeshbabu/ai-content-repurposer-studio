@@ -193,7 +193,7 @@ export async function POST(req: Request) {
           overageRate: PRO_TIER_CONFIG.OVERAGE_RATE,
           overageEnabled,
           upgradeOptions: [
-            { plan: 'agency', monthlyLimit: 450, dailyLimit: 'unlimited', price: 39.99 }
+            { plan: 'agency', monthlyLimit: 450, price: 39.99 }
           ]
         }), 
         { status: 402, headers: { 'Content-Type': 'application/json' } }

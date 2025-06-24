@@ -300,7 +300,7 @@ export class TierClient {
       },
       basic: {
         monthlyLimit: 60,
-        dailyLimit: 2,
+        dailyLimit: 'unlimited',
         platforms: ['twitter', 'instagram', 'facebook'],
         aiModel: 'standard',
         analytics: true,
@@ -310,7 +310,7 @@ export class TierClient {
       },
       pro: {
         monthlyLimit: 150,
-        dailyLimit: 5,
+        dailyLimit: 'unlimited',
         platforms: ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'tiktok', 'youtube', 'email', 'newsletter'],
         aiModel: 'advanced',
         analytics: true,

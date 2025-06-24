@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { withPrisma } from '@/lib/prisma-dynamic';
-import { updateSubscription, SUBSCRIPTION_LIMITS, DAILY_LIMITS } from '@/lib/subscription';
+import { updateSubscription, SUBSCRIPTION_LIMITS } from '@/lib/subscription';
 import type { SubscriptionPlan } from '@/lib/subscription';
 import { 
   validateUserTable, 
@@ -55,12 +55,7 @@ export async function GET() {
         usage: {
           current: 0,
           limit: SUBSCRIPTION_LIMITS.free,
-          remaining: SUBSCRIPTION_LIMITS.free,
-          daily: {
-            current: 0,
-            limit: DAILY_LIMITS.free === Infinity ? 'Unlimited' : DAILY_LIMITS.free,
-            remaining: DAILY_LIMITS.free === Infinity ? 'Unlimited' : DAILY_LIMITS.free
-          }
+          remaining: SUBSCRIPTION_LIMITS.free
         },
         // Message that will be displayed in the UI
         message: 'Could not check usage limits. System is being set up.'
@@ -96,12 +91,7 @@ export async function GET() {
           usage: {
             current: 0,
             limit: SUBSCRIPTION_LIMITS.free,
-            remaining: SUBSCRIPTION_LIMITS.free,
-            daily: {
-              current: 0,
-              limit: DAILY_LIMITS.free === Infinity ? 'Unlimited' : DAILY_LIMITS.free,
-              remaining: DAILY_LIMITS.free === Infinity ? 'Unlimited' : DAILY_LIMITS.free
-            }
+            remaining: SUBSCRIPTION_LIMITS.free
           }
         });
       }
@@ -111,7 +101,6 @@ export async function GET() {
       
       // Get usage limits from the configuration
       const usageLimit = SUBSCRIPTION_LIMITS[plan];
-      const dailyLimit = DAILY_LIMITS[plan];
       
       // Ensure usageThisMonth is a number
       const usageThisMonth = typeof user.usageThisMonth === 'number' ? user.usageThisMonth : 0;
@@ -128,53 +117,11 @@ export async function GET() {
           limit: usageLimit === Infinity ? 'Unlimited' : usageLimit,
           remaining: usageLimit === Infinity 
             ? 'Unlimited' 
-            : Math.max(0, usageLimit - usageThisMonth),
-          daily: {
-            current: 0,
-            limit: dailyLimit === Infinity ? 'Unlimited' : dailyLimit,
-            remaining: dailyLimit === Infinity ? 'Unlimited' : dailyLimit
-          } as {
-            current: number;
-            limit: number | 'Unlimited';
-            remaining: number | 'Unlimited';
-          }
+            : Math.max(0, usageLimit - usageThisMonth)
         }
       };
 
-      // Try to get daily usage, but don't fail if it doesn't work
-      try {
-        // Check if DailyUsage table exists
-        const dailyUsageTableExists = await ensureDailyUsageTableExists().catch(() => false);
-        
-        if (dailyUsageTableExists) {
-          // Get today's usage
-          const today = new Date(new Date().setHours(0, 0, 0, 0));
-          
-          // Use dynamic query to avoid TypeScript errors about missing models
-          const dailyUsageResult = await withPrisma(async (prisma) => {
-            const result = await prisma.$queryRawUnsafe(
-              `SELECT "count" FROM "DailyUsage" WHERE "userId" = $1 AND "date" = $2 LIMIT 1`,
-              userId,
-              today.toISOString()
-            );
-            return result as { count: number }[];
-          }).catch(() => []);
-          
-          const dailyUsed = dailyUsageResult.length > 0 ? Number(dailyUsageResult[0].count) : 0;
-          
-          // Update daily usage in response
-          response.usage.daily = {
-            current: dailyUsed,
-            limit: dailyLimit === Infinity ? 'Unlimited' : dailyLimit,
-            remaining: dailyLimit === Infinity
-              ? 'Unlimited'
-              : Math.max(0, dailyLimit - dailyUsed)
-          };
-        }
-      } catch (dailyError) {
-        console.error('Error getting daily usage (non-critical):', dailyError);
-        // We already have fallback values so no action needed
-      }
+      // Daily limits have been removed - only monthly limits are used
 
       // Cache the response data
       await withCache(async (cache) => {
@@ -195,12 +142,7 @@ export async function GET() {
         usage: {
           current: 0,
           limit: SUBSCRIPTION_LIMITS.free,
-          remaining: SUBSCRIPTION_LIMITS.free,
-          daily: {
-            current: 0,
-            limit: DAILY_LIMITS.free === Infinity ? 'Unlimited' : DAILY_LIMITS.free,
-            remaining: DAILY_LIMITS.free === Infinity ? 'Unlimited' : DAILY_LIMITS.free
-          }
+          remaining: SUBSCRIPTION_LIMITS.free
         },
         message: 'Database error. Usage limits could not be checked.'
       });
@@ -218,12 +160,7 @@ export async function GET() {
       usage: {
         current: 0,
         limit: SUBSCRIPTION_LIMITS.free,
-        remaining: SUBSCRIPTION_LIMITS.free,
-        daily: {
-          current: 0,
-          limit: DAILY_LIMITS.free === Infinity ? 'Unlimited' : DAILY_LIMITS.free,
-          remaining: DAILY_LIMITS.free === Infinity ? 'Unlimited' : DAILY_LIMITS.free
-        }
+        remaining: SUBSCRIPTION_LIMITS.free
       },
       message: 'Error checking usage limits. Please try again later.'
     }, { status: 200 }); // Return 200 to avoid UI errors

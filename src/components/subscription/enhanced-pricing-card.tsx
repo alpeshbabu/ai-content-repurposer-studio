@@ -12,7 +12,12 @@ interface EnhancedPricingCardProps {
     name: string;
     price: number;
     features: string[];
-    limits: any;
+    limits: {
+      monthlyLimit: number;
+      overageRate: number;
+      maxTeamMembers: number;
+      additionalMemberPrice: number;
+    };
   };
   currentPlan: string;
   onAction: (planId: string, action: 'upgrade' | 'downgrade') => void;
@@ -101,24 +106,18 @@ export function EnhancedPricingCard({
 
       <CardContent className="flex-1 flex flex-col">
         {/* Key metrics */}
-        <div className="grid grid-cols-2 gap-2 mb-4 p-3 bg-gray-50 rounded-lg text-sm">
+        <div className="grid grid-cols-1 gap-2 mb-4 p-3 bg-gray-50 rounded-lg text-sm">
           <div>
             <div className="font-medium text-gray-900">Monthly Limit</div>
             <div className="text-gray-600">
               {plan.limits.monthlyLimit === -1 ? 'Unlimited' : plan.limits.monthlyLimit}
             </div>
           </div>
-          <div>
-            <div className="font-medium text-gray-900">Daily Limit</div>
-            <div className="text-gray-600">
-              {plan.limits.dailyLimit === -1 ? 'None' : plan.limits.dailyLimit}
-            </div>
-          </div>
           {plan.limits.maxTeamMembers > 0 && (
             <>
               <div>
                 <div className="font-medium text-gray-900">Team Members</div>
-                <div className="text-gray-600">{plan.limits.maxTeamMembers}</div>
+                <div className="text-gray-600">{plan.limits.maxTeamMembers} included</div>
               </div>
               <div>
                 <div className="font-medium text-gray-900">Overage Rate</div>
@@ -136,6 +135,16 @@ export function EnhancedPricingCard({
               <span className="text-gray-700">{feature}</span>
             </div>
           ))}
+          
+          {/* Show additional member pricing for Agency plan */}
+          {plan.id === 'agency' && plan.limits.additionalMemberPrice > 0 && (
+            <div className="flex items-start gap-2 text-sm border-t pt-2 mt-2">
+              <Check className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+              <span className="text-gray-700">
+                Add additional member for just <span className="font-medium">${plan.limits.additionalMemberPrice}/month</span>
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Action button */}

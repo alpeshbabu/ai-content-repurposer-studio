@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { withPrisma } from '@/lib/prisma-dynamic'
-import { incrementUsage, recordOverageCharge, SubscriptionPlan, SUBSCRIPTION_LIMITS, DAILY_LIMITS } from '@/lib/subscription'
+import { incrementUsage, recordOverageCharge, SubscriptionPlan, SUBSCRIPTION_LIMITS } from '@/lib/subscription'
 import { aiService, Platform, AIProvider } from '@/lib/ai-service'
 import { 
   tableExists, 
@@ -13,6 +13,7 @@ import {
 } from '@/lib/db-setup'
 import { withCache } from '@/lib/cache-dynamic'
 import { z } from 'zod'
+import { canUserRepurpose } from '@/lib/subscription'
 
 // Force dynamic to prevent build-time execution
 export const dynamic = 'force-dynamic';
@@ -208,105 +209,17 @@ export async function POST(req: Request) {
         );
       }
       
-      // Check if monthly limit is exceeded
-      const monthlyLimit = SUBSCRIPTION_LIMITS[plan];
-      const isMonthlyExceeded = user.usageThisMonth >= monthlyLimit && monthlyLimit !== Infinity;
+      // Check if user can repurpose content
+      const canRepurpose = await canUserRepurpose(session.user.id);
       
-      // Check if daily limit is exceeded
-      let isDailyExceeded = false;
-      const dailyLimit = DAILY_LIMITS[plan];
-      
-      // Check if DailyUsage table exists
-      const dailyUsageTableExists = await tableExists('DailyUsage');
-      
-      if (dailyLimit !== Infinity && dailyUsageTableExists) {
-        try {
-          const today = new Date(new Date().setHours(0, 0, 0, 0));
-          
-          // Use dynamic query instead of model-based query
-          const dailyUsageResult = await withPrisma(async (prisma) => {
-            return await prisma.$queryRawUnsafe<{ count: number }[]>(
-              `SELECT "count" FROM "DailyUsage" 
-               WHERE "userId" = $1 AND "date" = $2 
-               LIMIT 1`,
-              userId,
-              today.toISOString()
-            );
-          });
-          
-          const dailyUsed = dailyUsageResult && dailyUsageResult.length > 0 
-            ? Number(dailyUsageResult[0].count) 
-            : 0;
-            
-          isDailyExceeded = dailyUsed >= dailyLimit;
-        } catch (error) {
-          console.error('Error checking daily usage:', error);
-          // If we can't check daily usage, default to only checking monthly
-          isDailyExceeded = false;
-        }
-      }
-      
-      // Check if Settings table exists and fetch user settings
-      const settingsTableExists = await tableExists('Settings');
-      let userBrandVoice = brandVoice; // Use provided brand voice or default to user's saved one
-      let preferredPlatforms: string[] = [];
-      let overageEnabled = false; // Check if user has enabled overage in settings
-      
-      if (settingsTableExists) {
-        try {
-          const settings = await withPrisma(async (prisma) => {
-            return await prisma.settings.findUnique({ where: { userId } });
-          });
-          if (!userBrandVoice) {
-            userBrandVoice = settings?.brandVoice || '';
-          }
-          preferredPlatforms = settings?.preferredPlatforms || [];
-          overageEnabled = settings?.overageEnabled || false;
-        } catch (error) {
-          console.error('Error fetching user settings:', error);
-        }
-      }
-      
-      // Check if user has overage consent and automatically allow overage if they do
-      const hasOverageConsent = user.overageConsent === true;
-      const shouldAllowOverage = allowOverage || hasOverageConsent || overageEnabled;
-
-      // If either limit is exceeded and overage is not allowed, return 402
-      if ((isMonthlyExceeded || isDailyExceeded) && !shouldAllowOverage) {
-        return new NextResponse(
-          JSON.stringify({
-            error: 'Usage limit exceeded',
-            message: isMonthlyExceeded 
-              ? 'Monthly usage limit exceeded. Please upgrade your plan or enable overage charges in your settings.' 
-              : 'Daily usage limit exceeded. Please upgrade your plan or try again tomorrow.',
-            limitType: isMonthlyExceeded ? 'monthly' : 'daily',
-            currentUsage: user.usageThisMonth,
-            limit: monthlyLimit,
-            plan: plan,
-            hasOverageConsent: hasOverageConsent,
-            overageEnabled: overageEnabled
-          }),
+      if (!canRepurpose) {
+        return NextResponse.json(
           { 
-            status: 402, // Payment Required
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Subscription-Required': 'true',
-              'X-Allow-Overage': 'true',
-              'X-Limit-Type': isMonthlyExceeded ? 'monthly' : 'daily'
-            }
-          }
+            error: 'Usage limit exceeded',
+            message: 'Monthly usage limit exceeded. Please upgrade your plan or enable overage charges in your settings.'
+          },
+          { status: 403 }
         );
-      }
-      
-      // If limit is exceeded but overage is allowed, record the charge
-      if ((isMonthlyExceeded || isDailyExceeded) && shouldAllowOverage) {
-        // Check if OverageCharge table exists
-        const overageChargeTableExists = await tableExists('OverageCharge');
-        if (overageChargeTableExists) {
-          await recordOverageCharge(userId, 1); // 1 content repurpose
-        } else {
-          console.log('OverageCharge table does not exist, skipping overage recording');
-        }
       }
 
       // Filter platforms based on the user's subscription plan

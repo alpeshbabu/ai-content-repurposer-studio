@@ -16,6 +16,7 @@ import {
   Settings as SettingsIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getPlanConfig, PlanType } from '@/lib/pricing-config';
 
 interface OverageSettingsProps {
   currentPlan: string;
@@ -28,14 +29,12 @@ interface UserSettings {
   preferredPlatforms: string[];
 }
 
-const OVERAGE_RATES = {
-  free: { rate: 0.12, description: '$0.12 per additional content repurpose' },
-  basic: { rate: 0.10, description: '$0.10 per additional content repurpose' },
-  pro: { rate: 0.08, description: '$0.08 per additional content repurpose' },
-  agency: { rate: 0.06, description: '$0.06 per additional content repurpose' }
-};
-
 export function OverageSettings({ currentPlan, onSettingsChange }: OverageSettingsProps) {
+  const planConfig = getPlanConfig(currentPlan as PlanType);
+  const overageRate = {
+    rate: planConfig.overagePrice,
+    description: `$${planConfig.overagePrice.toFixed(2)} per additional content repurpose`
+  };
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -111,8 +110,7 @@ export function OverageSettings({ currentPlan, onSettingsChange }: OverageSettin
   };
 
   const getOverageInfo = () => {
-    const planInfo = OVERAGE_RATES[currentPlan as keyof typeof OVERAGE_RATES] || OVERAGE_RATES.basic;
-    return planInfo;
+    return overageRate;
   };
 
   const canEnableOverage = () => {

@@ -102,12 +102,6 @@ jest.mock('src/lib/subscription', () => ({
     pro: 60,
     agency: 450,
   },
-  DAILY_LIMITS: {
-    free: Infinity,
-    basic: Infinity,
-    pro: Infinity,
-    agency: Infinity,
-  },
 }))
 
 jest.mock('src/lib/ai-service', () => ({

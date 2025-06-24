@@ -11,19 +11,15 @@ export const runtime = 'nodejs';
 
 // FREE TIER CONFIGURATION
 const FREE_TIER_CONFIG = {
+  PLAN_NAME: 'Free',
   MONTHLY_LIMIT: 5,
-  DAILY_LIMIT: Infinity, // No daily limit
   OVERAGE_RATE: 0.12,
-  ALLOWED_PLATFORMS: ['twitter', 'instagram'] as Platform[],
-  AI_MODEL: 'basic', // Basic AI model
-  FEATURES: {
-    templates: ['twitter', 'instagram'],
-    analytics: false,
-    customTemplates: false,
-    teamCollaboration: false,
-    prioritySupport: false
-  }
-}
+  FEATURES: [
+    'Basic AI model',
+    'Twitter & Instagram templates',
+    'No credit card required'
+  ]
+} as const;
 
 // Validation schema for Free tier
 const freeRepurposeSchema = z.object({

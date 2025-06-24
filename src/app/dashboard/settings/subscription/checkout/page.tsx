@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import CheckoutForm from '@/components/payment/checkout-form';
-import { PLAN_DETAILS } from '@/lib/stripe';
+import { getPlanConfig, PlanType } from '@/lib/pricing-config';
 
 export const metadata: Metadata = {
   title: 'Checkout - AI Content Repurposer Studio',
@@ -55,14 +55,15 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
   }
 
   // Prevent downgrading through this flow
-  const currentPlanIndex = ['free', 'basic', 'pro', 'agency'].indexOf(user.subscriptionPlan);
-  const targetPlanIndex = ['free', 'basic', 'pro', 'agency'].indexOf(planParam);
+  const hierarchy = ['free', 'basic', 'pro', 'agency'];
+  const currentPlanIndex = hierarchy.indexOf(user.subscriptionPlan);
+  const targetPlanIndex = hierarchy.indexOf(planParam);
 
   if (targetPlanIndex <= currentPlanIndex && user.subscriptionStatus === 'active') {
     redirect('/dashboard/settings/subscription?error=already_subscribed');
   }
 
-  const planDetails = PLAN_DETAILS[planParam as keyof typeof PLAN_DETAILS];
+  const planDetails = getPlanConfig(planParam as PlanType);
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
@@ -100,18 +101,10 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                 <span className="text-gray-600">Price</span>
                 <span className="font-medium">${planDetails.price}/month</span>
               </div>
-              {planParam === 'basic' && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Overage rate</span>
-                  <span className="text-gray-500">$0.50 per extra repurpose</span>
-                </div>
-              )}
-              {planParam === 'pro' && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Overage rate</span>
-                  <span className="text-gray-500">$0.30 per extra repurpose</span>
-                </div>
-              )}
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Overage rate</span>
+                <span className="text-gray-500">${planDetails.overagePrice.toFixed(2)} per extra repurpose</span>
+              </div>
             </div>
 
             <div className="border-t pt-4">
@@ -128,7 +121,7 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
             <div className="mt-6">
               <h4 className="font-medium text-gray-900 mb-3">What's included:</h4>
               <ul className="space-y-2">
-                {planDetails.features.map((feature, index) => (
+                {planDetails.features.map((feature: string, index: number) => (
                   <li key={index} className="flex items-center text-sm text-gray-600">
                     <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />

@@ -1,30 +1,35 @@
-import { NextResponse } from 'next/server';
-import { validateAdminRequest } from '@/lib/admin-auth';
-import { validateSubscriptionRequirements } from '@/lib/validate-subscription';
-import { SUBSCRIPTION_LIMITS, DAILY_LIMITS, OVERAGE_PRICING } from '@/lib/subscription';
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+import { SUBSCRIPTION_LIMITS, OVERAGE_PRICING } from '@/lib/subscription';
+import { validateAdminAccess } from '@/lib/admin-auth';
 
-export async function GET(req: Request) {
+export async function GET(request: NextRequest) {
   try {
-    // Validate admin authentication
-    const { isValid, error } = await validateAdminRequest(req);
-    if (!isValid) {
-      return new NextResponse(error || 'Unauthorized', { status: 401 });
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Validate subscription requirements
-    const validationResult = await validateSubscriptionRequirements();
-    
-    // Return the validation results along with current configuration
+    const hasAccess = await validateAdminAccess(session.user.id, 'system:read');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     return NextResponse.json({
-      ...validationResult,
-      configuration: {
-        subscriptionLimits: SUBSCRIPTION_LIMITS,
-        dailyLimits: DAILY_LIMITS,
+      subscriptionConfig: {
+        monthlyLimits: SUBSCRIPTION_LIMITS,
         overagePricing: OVERAGE_PRICING
-      }
+      },
+      status: 'healthy'
     });
+
   } catch (error) {
-    console.error('[SUBSCRIPTION_CHECK_ERROR]', error);
-    return new NextResponse('Internal Error', { status: 500 });
+    console.error('Subscription check error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 } 

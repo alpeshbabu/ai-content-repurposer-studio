@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { stripe } from '@/lib/stripe';
 import { prisma } from '@/lib/prisma';
 import Stripe from 'stripe';
+import { getTeamMemberBillingInfo } from '@/lib/team-billing';
 
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
@@ -40,6 +41,10 @@ export async function POST(req: NextRequest) {
 
       case 'customer.subscription.trial_will_end':
         await handleTrialWillEnd(event.data.object as Stripe.Subscription);
+        break;
+
+      case 'invoice.upcoming':
+        await handleUpcomingInvoice(event.data.object as Stripe.Invoice);
         break;
 
       default:
@@ -260,6 +265,71 @@ async function handleTrialWillEnd(subscription: Stripe.Subscription) {
   console.log(`Trial ending for user ${user.id}`);
   
   // Here you could send an email notification about the trial ending
+}
+
+async function handleUpcomingInvoice(invoice: Stripe.Invoice) {
+  console.log('Processing upcoming invoice:', invoice.id);
+
+  if (!invoice.subscription) return;
+
+  // Find user by Stripe customer ID
+  const user = await prisma.user.findUnique({
+    where: { stripeCustomerId: invoice.customer as string },
+    select: { 
+      id: true, 
+      email: true, 
+      subscriptionPlan: true,
+      team: {
+        include: {
+          members: true
+        }
+      }
+    }
+  });
+
+  if (!user) {
+    console.error('User not found for customer:', invoice.customer);
+    return;
+  }
+
+  // If user has Agency plan, check team member billing
+  if (user.subscriptionPlan === 'agency' && user.team) {
+    try {
+      const billingInfo = await getTeamMemberBillingInfo(invoice.subscription as string);
+      
+      if (billingInfo.hasAdditionalMembers) {
+        console.log(`Upcoming invoice includes ${billingInfo.quantity} additional team members ($${billingInfo.monthlyCharge}) for user ${user.id}`);
+        
+        // Here you could:
+        // 1. Send email notification about upcoming charges
+        // 2. Log billing details
+        // 3. Update internal records
+        
+        // Create a billing notification record
+        await prisma.billingNotification.create({
+          data: {
+            userId: user.id,
+            type: 'upcoming_team_member_charges',
+            amount: billingInfo.monthlyCharge,
+            description: `${billingInfo.quantity} additional team members`,
+            scheduledDate: new Date(invoice.period_end! * 1000),
+            metadata: {
+              teamMemberCount: billingInfo.quantity,
+              pricePerMember: 6.99,
+              subscriptionId: invoice.subscription
+            }
+          }
+        }).catch(error => {
+          // Ignore if table doesn't exist yet
+          console.log('Billing notification table not available:', error.message);
+        });
+      }
+    } catch (error) {
+      console.error('Error processing team member billing for upcoming invoice:', error);
+    }
+  }
+
+  console.log(`Upcoming invoice processed for user ${user.id}`);
 }
 
 function getPlanFromPriceId(priceId: string): string | null {

@@ -4,12 +4,13 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-import { ArrowRight, Zap, Award, Users, Clock, Gauge, CreditCard, Sparkles } from 'lucide-react'
-import DemoRepurposer from '@/components/DemoRepurposer'
+import { ArrowRight, Sparkles } from 'lucide-react'
+
 import LandingHeader from '@/components/LandingHeader'
+import { getAllPlans, getLimitDisplay, PlanType } from '@/lib/pricing-config'
 
 export default function HomePage() {
-  const { data: session, status } = useSession()
+  const { status } = useSession()
   const router = useRouter()
 
   useEffect(() => {
@@ -208,244 +209,102 @@ export default function HomePage() {
             </div>
             
             <div className="mt-12 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
-              {/* Free Plan */}
-              <div className="bg-white rounded-lg shadow-md p-6 border-2 border-gray-200">
-                <h3 className="text-xl font-semibold text-gray-900">Free</h3>
-                <p className="mt-2 text-gray-600">Perfect for trying out our platform</p>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold text-gray-900">$0</span>
-                  <span className="text-gray-600">/month</span>
-                </div>
-                <ul className="mt-6 space-y-3 text-sm">
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    5 content repurposes/month
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    No daily limit
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Basic AI model
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Twitter & Instagram templates
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    $0.12 per overage content
-                  </li>
-                </ul>
-                <Link
-                  href="/auth/signup"
-                  className="mt-8 w-full block text-center px-4 py-2 border border-indigo-600 text-indigo-600 rounded-md hover:bg-indigo-50 transition-colors"
-                >
-                  Get Started Free
-                </Link>
-              </div>
-
-              {/* Basic Plan */}
-              <div className="bg-white rounded-lg shadow-md p-6 border-2 border-gray-200">
-                <h3 className="text-xl font-semibold text-gray-900">Basic</h3>
-                <p className="mt-2 text-gray-600">Great for regular content creators</p>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold text-gray-900">$6.99</span>
-                  <span className="text-gray-600">/month</span>
-                </div>
-                <ul className="mt-6 space-y-3 text-sm">
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    60 content repurposes/month
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    2 repurposes per day limit
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Standard AI model
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Twitter, Instagram & Facebook
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Basic customer support
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Basic Analytics
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    $0.10 per overage content
-                  </li>
-                </ul>
-                <Link
-                  href="/auth/signup"
-                  className="mt-8 w-full block text-center px-4 py-2 border border-indigo-600 text-indigo-600 rounded-md hover:bg-indigo-50 transition-colors"
-                >
-                  Get Started
-                </Link>
-              </div>
-
-              {/* Pro Plan */}
-              <div className="bg-white rounded-lg shadow-md p-6 border-2 border-indigo-600 relative">
-                <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                  <span className="bg-indigo-600 text-white px-4 py-1 rounded-full text-sm font-medium">
-                    Most Popular
-                  </span>
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900">Pro</h3>
-                <p className="mt-2 text-gray-600">Best for content creators</p>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold text-gray-900">$14.99</span>
-                  <span className="text-gray-600">/month</span>
-                </div>
-                <ul className="mt-6 space-y-3 text-sm">
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    150 content repurposes/month
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    5 repurposes per day limit
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Advanced AI model
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    All major platforms + LinkedIn
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Professional customer support
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Professional Analytics
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    $0.08 per overage content
-                  </li>
-                </ul>
-                <Link
-                  href="/auth/signup"
-                  className="mt-8 w-full block text-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
-                >
-                  Get Started
-                </Link>
-              </div>
-
-              {/* Agency Plan */}
-              <div className="bg-white rounded-lg shadow-md p-6 border-2 border-gray-200">
-                <h3 className="text-xl font-semibold text-gray-900">Agency</h3>
-                <p className="mt-2 text-gray-600">For teams and agencies</p>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold text-gray-900">$29.99</span>
-                  <span className="text-gray-600">/month</span>
-                </div>
-                <ul className="mt-6 space-y-3 text-sm">
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    450 content repurposes/month
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Up to 3 team members
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Advanced AI model
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Priority Support
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    All platforms + custom templates
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Professional Analytics
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    Team collaboration & analytics
-                  </li>
-                  <li className="flex items-center">
-                    <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    $0.06 per overage content
-                  </li>
-                </ul>
-                <Link
-                  href="/auth/signup"
-                  className="mt-8 w-full block text-center px-4 py-2 border border-indigo-600 text-indigo-600 rounded-md hover:bg-indigo-50 transition-colors"
-                >
-                  Get Started
-                </Link>
-              </div>
+              {getAllPlans().map((plan) => {
+                // Define which plan is most popular
+                const isPopular = plan.id === 'pro';
+                
+                // Get limit display for monthly only
+                const limits = getLimitDisplay(plan.id as PlanType);
+                
+                // Plan descriptions
+                const descriptions = {
+                  free: 'Perfect for trying out our platform',
+                  basic: 'Great for regular content creators',
+                  pro: 'Best for content creators',
+                  agency: 'For teams and agencies'
+                };
+                
+                return (
+                  <div 
+                    key={plan.id}
+                    className={`bg-white rounded-lg shadow-md p-6 border-2 ${
+                      isPopular ? 'border-indigo-600 relative' : 'border-gray-200'
+                    }`}
+                  >
+                    {isPopular && (
+                      <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                        <span className="bg-indigo-600 text-white px-4 py-1 rounded-full text-sm font-medium">
+                          Most Popular
+                        </span>
+                      </div>
+                    )}
+                    
+                    <h3 className="text-xl font-semibold text-gray-900">{plan.name}</h3>
+                    <p className="mt-2 text-gray-600">{descriptions[plan.id as keyof typeof descriptions]}</p>
+                    
+                    <div className="mt-4">
+                      <span className="text-3xl font-bold text-gray-900">
+                        ${plan.price}
+                      </span>
+                      <span className="text-gray-600">/month</span>
+                    </div>
+                    
+                    <ul className="mt-6 space-y-3 text-sm">
+                      <li className="flex items-center">
+                        <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                        {limits.monthly}
+                      </li>
+                      
+                      {plan.teamMembers > 1 && (
+                        <li className="flex items-center">
+                          <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          Up to {plan.teamMembers} team members included
+                        </li>
+                      )}
+                      
+                      {plan.id === 'agency' && plan.additionalMemberPrice > 0 && (
+                        <li className="flex items-center">
+                          <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          Add additional member for just ${plan.additionalMemberPrice}/month
+                        </li>
+                      )}
+                      
+                      {plan.features.map((feature) => (
+                        <li key={feature} className="flex items-center">
+                          <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          {feature}
+                        </li>
+                      ))}
+                      
+                      <li className="flex items-center">
+                        <svg className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                        ${plan.overagePrice.toFixed(2)} per overage content
+                      </li>
+                    </ul>
+                    
+                    <Link
+                      href="/auth/signup"
+                      className={`mt-8 w-full block text-center px-4 py-2 rounded-md transition-colors ${
+                        isPopular
+                          ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                          : 'border border-indigo-600 text-indigo-600 hover:bg-indigo-50'
+                      }`}
+                    >
+                      {plan.name === 'Free' ? 'Get Started Free' : 'Get Started'}
+                    </Link>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

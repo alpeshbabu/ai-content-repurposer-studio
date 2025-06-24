@@ -11,20 +11,16 @@ export const runtime = 'nodejs';
 
 // BASIC TIER CONFIGURATION
 const BASIC_TIER_CONFIG = {
+  PLAN_NAME: 'Basic',
   MONTHLY_LIMIT: 60,
-  DAILY_LIMIT: 2,
   OVERAGE_RATE: 0.10,
-  ALLOWED_PLATFORMS: ['twitter', 'instagram', 'facebook'] as Platform[],
-  AI_MODEL: 'standard', // Standard AI model
-  FEATURES: {
-    templates: ['twitter', 'instagram', 'facebook'],
-    analytics: true,
-    customTemplates: false,
-    teamCollaboration: false,
-    prioritySupport: false,
-    basicSupport: true
-  }
-}
+  FEATURES: [
+    'Standard AI model',
+    'Twitter, Instagram & Facebook templates',
+    'Basic customer support',
+    'Basic Analytics'
+  ]
+} as const;
 
 // Validation schema for Basic tier
 const basicRepurposeSchema = z.object({
@@ -118,26 +114,6 @@ export async function POST(req: Request) {
     const currentUsage = user.usageThisMonth;
     const isMonthlyAtLimit = currentUsage >= BASIC_TIER_CONFIG.MONTHLY_LIMIT;
 
-    // Check daily usage
-    let isDailyAtLimit = false;
-    const today = new Date(new Date().setHours(0, 0, 0, 0));
-    try {
-      const dailyUsage = await withPrisma(async (prisma) => {
-        return await prisma.dailyUsage.findUnique({
-          where: {
-            userId_date: {
-              userId,
-              date: today
-            }
-          }
-        });
-      });
-      const dailyCount = dailyUsage?.count || 0;
-      isDailyAtLimit = dailyCount >= BASIC_TIER_CONFIG.DAILY_LIMIT;
-    } catch (error) {
-      console.error('Error checking daily usage:', error);
-    }
-
     // Fetch user's preferred platforms and overage settings from settings
     let preferredPlatforms: string[] = [];
     let overageEnabled = false;
@@ -160,21 +136,18 @@ export async function POST(req: Request) {
     // Check if overage is allowed (from request, user consent, or settings)
     const shouldAllowOverage = allowOverage || user.overageConsent || overageEnabled;
 
-    if ((isMonthlyAtLimit || isDailyAtLimit) && !shouldAllowOverage) {
+    if (isMonthlyAtLimit && !shouldAllowOverage) {
       return new NextResponse(
         JSON.stringify({
-          error: isMonthlyAtLimit ? 'Monthly limit reached' : 'Daily limit reached',
-          message: isMonthlyAtLimit 
-            ? `Basic tier allows ${BASIC_TIER_CONFIG.MONTHLY_LIMIT} repurposes per month. Enable overage charges in your settings to continue.`
-            : `Basic tier allows ${BASIC_TIER_CONFIG.DAILY_LIMIT} repurposes per day. Try again tomorrow or enable overage charges.`,
+          error: 'Monthly limit reached',
+          message: `Basic tier allows ${BASIC_TIER_CONFIG.MONTHLY_LIMIT} repurposes per month. Enable overage charges in your settings to continue.`,
           currentUsage,
-          limit: isMonthlyAtLimit ? BASIC_TIER_CONFIG.MONTHLY_LIMIT : BASIC_TIER_CONFIG.DAILY_LIMIT,
-          limitType: isMonthlyAtLimit ? 'monthly' : 'daily',
+          limit: BASIC_TIER_CONFIG.MONTHLY_LIMIT,
           overageRate: BASIC_TIER_CONFIG.OVERAGE_RATE,
           overageEnabled,
           upgradeOptions: [
-            { plan: 'pro', monthlyLimit: 150, dailyLimit: 5, price: 14.99 },
-            { plan: 'agency', monthlyLimit: 450, dailyLimit: 'unlimited', price: 39.99 }
+            { plan: 'pro', monthlyLimit: 150, price: 14.99 },
+            { plan: 'agency', monthlyLimit: 450, price: 39.99 }
           ]
         }), 
         { status: 402, headers: { 'Content-Type': 'application/json' } }
@@ -183,7 +156,7 @@ export async function POST(req: Request) {
 
     // Handle overage if allowed
     let overageCharge = 0;
-    if ((isMonthlyAtLimit || isDailyAtLimit) && shouldAllowOverage) {
+    if (isMonthlyAtLimit && shouldAllowOverage) {
       overageCharge = BASIC_TIER_CONFIG.OVERAGE_RATE;
     }
 
@@ -282,24 +255,6 @@ export async function POST(req: Request) {
           usageThisMonth: { increment: 1 }
         }
       });
-
-      // Increment daily usage
-      await prisma.dailyUsage.upsert({
-        where: {
-          userId_date: {
-            userId,
-            date: today
-          }
-        },
-        update: {
-          count: { increment: 1 }
-        },
-        create: {
-          userId,
-          date: today,
-          count: 1
-        }
-      });
     });
 
     // Record overage charge if applicable
@@ -326,11 +281,6 @@ export async function POST(req: Request) {
             current: currentUsage + 1,
             limit: BASIC_TIER_CONFIG.MONTHLY_LIMIT,
             remaining: Math.max(0, BASIC_TIER_CONFIG.MONTHLY_LIMIT - currentUsage - 1)
-          },
-          daily: {
-            current: dailyUsage + 1,
-            limit: BASIC_TIER_CONFIG.DAILY_LIMIT,
-            remaining: Math.max(0, BASIC_TIER_CONFIG.DAILY_LIMIT - dailyUsage - 1)
           }
         },
         tier: 'basic',

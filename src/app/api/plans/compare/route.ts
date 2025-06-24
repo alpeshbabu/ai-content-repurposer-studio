@@ -1,28 +1,45 @@
 import { NextResponse } from 'next/server';
-import { PLAN_DETAILS } from '@/lib/stripe';
+import { getAllPlans, PRICING_CONFIG } from '@/lib/pricing-config';
 
 export async function GET() {
   try {
-    const plans = Object.entries(PLAN_DETAILS).map(([key, plan]) => ({
-      id: key,
+    const allPlans = getAllPlans();
+    
+    const plans = allPlans.map((plan) => ({
+      id: plan.id,
       name: plan.name,
       price: plan.price,
-      priceId: plan.priceId,
       features: plan.features,
-      limits: plan.limits,
+      limits: {
+        monthlyLimit: plan.monthlyLimit,
+        overageRate: plan.overagePrice,
+        maxTeamMembers: plan.teamMembers,
+        additionalMemberPrice: plan.additionalMemberPrice
+      },
       // Enhanced feature breakdown for comparison
       featureMatrix: {
-        monthlyLimit: plan.limits.monthlyLimit,
-        dailyLimit: plan.limits.dailyLimit === -1 ? 'Unlimited' : plan.limits.dailyLimit,
-        overageRate: `$${plan.limits.overageRate.toFixed(2)}`,
-        maxTeamMembers: plan.limits.maxTeamMembers || 'N/A',
-        aiModel: getAIModelType(key),
-        platforms: getPlatforms(key),
-        support: getSupportLevel(key),
-        analytics: getAnalyticsLevel(key),
-        customTemplates: hasCustomTemplates(key),
-        teamCollaboration: hasTeamCollaboration(key),
-        prioritySupport: hasPrioritySupport(key)
+        monthlyLimit: plan.monthlyLimit === -1 ? 'Unlimited' : plan.monthlyLimit,
+        overageRate: `$${plan.overagePrice.toFixed(2)}`,
+        maxTeamMembers: plan.teamMembers > 1 ? plan.teamMembers : 'N/A',
+        additionalMemberPrice: plan.id === 'agency' && plan.additionalMemberPrice > 0 ? `$${plan.additionalMemberPrice}/month` : 'N/A',
+        aiModel: getAIModelType(plan.id),
+        platforms: getPlatforms(plan.id),
+        customTemplates: hasCustomTemplates(plan.id),
+        teamCollaboration: hasTeamCollaboration(plan.id),
+        prioritySupport: hasPrioritySupport(plan.id)
+      },
+      formatted: {
+        ...plan,
+        monthlyLimit: plan.monthlyLimit === -1 ? 'Unlimited' : plan.monthlyLimit,
+        overagePrice: `$${plan.overagePrice}/overage`,
+        price: plan.price === 0 ? 'Free' : `$${plan.price}/month`,
+        teamMembers: plan.teamMembers > 1 ? `Up to ${plan.teamMembers} members` : '1 member'
+      },
+      comparison: {
+        features: [
+          { key: 'monthlyLimit', label: 'Monthly Repurposes', type: 'number' },
+          { key: 'overageRate', label: 'Overage Rate', type: 'text' }
+        ]
       }
     }));
 
@@ -32,7 +49,6 @@ export async function GET() {
         category: 'Usage Limits',
         features: [
           { key: 'monthlyLimit', label: 'Monthly Repurposes', type: 'number' },
-          { key: 'dailyLimit', label: 'Daily Limit', type: 'text' },
           { key: 'overageRate', label: 'Overage Rate', type: 'text' }
         ]
       },
@@ -48,6 +64,7 @@ export async function GET() {
         category: 'Team & Collaboration',
         features: [
           { key: 'maxTeamMembers', label: 'Team Members', type: 'text' },
+          { key: 'additionalMemberPrice', label: 'Additional Members', type: 'text' },
           { key: 'teamCollaboration', label: 'Team Analytics', type: 'boolean' }
         ]
       },
@@ -64,7 +81,7 @@ export async function GET() {
     return NextResponse.json({
       plans,
       featureCategories,
-      hierarchy: ['free', 'basic', 'pro', 'agency']
+      hierarchy: PRICING_CONFIG.hierarchy
     });
 
   } catch (error) {
@@ -92,33 +109,13 @@ function getPlatforms(planKey: string): string[] {
     case 'free': return ['Twitter', 'Instagram'];
     case 'basic': return ['Twitter', 'Instagram', 'Facebook'];
     case 'pro': return ['Twitter', 'Instagram', 'Facebook', 'LinkedIn'];
-    case 'agency': return ['Twitter', 'Instagram', 'Facebook', 'LinkedIn', 'Threads', 'Email', 'Newsletter'];
+    case 'agency': return ['Twitter', 'Instagram', 'Facebook', 'LinkedIn', 'Thread', 'TikTok', 'YouTube', 'Email', 'Newsletter'];
     default: return ['Twitter', 'Instagram'];
   }
 }
 
-function getSupportLevel(planKey: string): string {
-  switch (planKey) {
-    case 'free': return 'Community';
-    case 'basic': return 'Basic';
-    case 'pro': return 'Professional';
-    case 'agency': return 'Priority';
-    default: return 'Community';
-  }
-}
-
-function getAnalyticsLevel(planKey: string): string {
-  switch (planKey) {
-    case 'free': return 'None';
-    case 'basic': return 'Basic';
-    case 'pro': return 'Professional';
-    case 'agency': return 'Advanced';
-    default: return 'None';
-  }
-}
-
 function hasCustomTemplates(planKey: string): boolean {
-  return planKey === 'agency';
+  return planKey === 'agency' || planKey === 'pro';
 }
 
 function hasTeamCollaboration(planKey: string): boolean {

@@ -88,8 +88,16 @@ export function DowngradeModal({
     }
     
     if ((currentPlan === 'pro' || currentPlan === 'agency') && targetPlan === 'basic') {
-      warnings.push('Daily usage will be limited to 2 repurposes');
       warnings.push('Monthly usage will be reduced significantly');
+    }
+    
+    if (targetPlan === 'basic') {
+      warnings.push('Monthly usage will be limited to 60 repurposes');
+      warnings.push('You will have access to fewer platform templates');
+    } else if (targetPlan === 'free') {
+      warnings.push('Monthly usage will be limited to 5 repurposes');
+      warnings.push('You will lose access to most platform templates');
+      warnings.push('You will lose access to advanced AI features');
     }
     
     return warnings;
@@ -98,8 +106,8 @@ export function DowngradeModal({
   const getUsageLimitComparison = () => {
     const limits = {
       free: { monthly: 5, daily: -1 },
-      basic: { monthly: 60, daily: 2 },
-      pro: { monthly: 150, daily: 5 },
+      basic: { monthly: 60, daily: -1 },
+      pro: { monthly: 150, daily: -1 },
       agency: { monthly: 450, daily: -1 }
     };
     

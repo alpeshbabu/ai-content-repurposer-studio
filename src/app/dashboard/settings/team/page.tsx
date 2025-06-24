@@ -237,7 +237,7 @@ export default async function TeamSettingsPage() {
                 <h3 className="text-sm font-medium text-green-800">Agency Plan Active</h3>
                 <div className="mt-2 text-sm text-green-700">
                   <p>
-                    You have access to all team collaboration features. Add up to 3 team members, collaborate on content, and access team analytics.
+                    You have access to all team collaboration features. Your Agency plan includes up to 3 team members. Add additional member for just $6.99/month.
                   </p>
                 </div>
               </div>

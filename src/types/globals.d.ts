@@ -94,7 +94,6 @@ export interface UsageRecord {
   totalUsage: number
   planLimits: {
     monthlyLimit: number
-    dailyLimit: number
     overageRate: number
   }
 }

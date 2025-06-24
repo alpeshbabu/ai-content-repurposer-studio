@@ -219,7 +219,7 @@ export default function AdvancedDashboard() {
                   />
                 </div>
                 <div className="text-center text-sm text-gray-500">
-                  {Math.round(usagePercentage)}% used
+                  {usagePercentage.toFixed(2)}% used
                 </div>
               </div>
             </CardContent>

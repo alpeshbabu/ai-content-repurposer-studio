@@ -11,27 +11,19 @@ export const runtime = 'nodejs';
 
 // AGENCY TIER CONFIGURATION
 const AGENCY_TIER_CONFIG = {
+  PLAN_NAME: 'Agency',
   MONTHLY_LIMIT: 450,
-  DAILY_LIMIT: Infinity, // No daily limit
   OVERAGE_RATE: 0.06,
-  ALLOWED_PLATFORMS: ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'email', 'newsletter', 'youtube', 'tiktok'] as Platform[],
-  AI_MODEL: 'premium', // Premium AI model
-  MAX_TEAM_MEMBERS: 3,
-  ADDITIONAL_MEMBER_COST: 6.99,
-  FEATURES: {
-    templates: ['twitter', 'instagram', 'facebook', 'linkedin', 'thread', 'email', 'newsletter', 'youtube', 'tiktok'],
-    analytics: true,
-    customTemplates: true,
-    teamCollaboration: true,
-    prioritySupport: true,
-    professionalSupport: true,
-    scheduling: true,
-    bulkOperations: true,
-    customBranding: true,
-    apiAccess: true,
-    whiteLabel: true
-  }
-}
+  TEAM_MEMBERS: 3,
+  ADDITIONAL_MEMBER_PRICE: 6.99,
+  FEATURES: [
+    'Advanced AI model',
+    'Priority Support',
+    'All platforms + custom templates',
+    'Team collaboration & analytics',
+    'Up to 3 team members included'
+  ]
+} as const;
 
 // Validation schema for Agency tier
 const agencyRepurposeSchema = z.object({
@@ -379,7 +371,7 @@ export async function POST(req: Request) {
         team: user.team ? {
           id: user.team.id,
           memberCount: user.team.members.length,
-          maxMembers: AGENCY_TIER_CONFIG.MAX_TEAM_MEMBERS,
+          maxMembers: AGENCY_TIER_CONFIG.TEAM_MEMBERS,
           pooledUsage: currentUsage
         } : undefined,
         analytics: {

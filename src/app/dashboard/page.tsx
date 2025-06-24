@@ -167,7 +167,7 @@ export default function DashboardPage() {
                   ></div>
                 </div>
                 <p className="text-xs text-gray-600">
-                  {usagePercentage}% used this month
+                  {usagePercentage.toFixed(2)}% used this month
                 </p>
               </div>
             </div>

@@ -27,25 +27,25 @@ const PLAN_DETAILS = {
     name: 'Free',
     monthlyLimit: 5,
     price: 0,
-    features: ['Basic content generation', 'Limited repurposing', 'Community support']
+    features: ['Basic AI model', 'Twitter & Instagram templates', 'No credit card required']
   },
   basic: {
     name: 'Basic',
-    monthlyLimit: 50,
-    price: 9.99,
-    features: ['Increased content generation', 'Multiple platforms', 'Email support', 'Custom brand voice']
+    monthlyLimit: 60,
+    price: 6.99,
+    features: ['Standard AI model', 'Twitter, Instagram & Facebook templates', 'Basic customer support', 'Basic Analytics']
   },
   pro: {
     name: 'Pro',
-    monthlyLimit: 200,
-    price: 29.99,
-    features: ['Advanced analytics', 'API access', 'Priority support', 'Bulk operations', 'Advanced templates']
+    monthlyLimit: 150,
+    price: 14.99,
+    features: ['Advanced AI model', 'All platforms + custom templates', 'Professional customer support', 'Professional Analytics']
   },
   agency: {
     name: 'Agency',
-    monthlyLimit: 1000,
-    price: 99.99,
-    features: ['Team collaboration', 'White-label options', 'Dedicated support', 'Advanced integrations', 'Custom workflows']
+    monthlyLimit: 450,
+    price: 29.99,
+    features: ['Advanced AI model', 'Priority Support', 'All platforms + custom templates', 'Team collaboration & analytics', 'Up to 3 team members included']
   }
 };
 

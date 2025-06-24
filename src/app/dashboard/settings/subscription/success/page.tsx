@@ -47,24 +47,22 @@ export default async function SubscriptionSuccessPage({ searchParams }: SuccessP
   const planFeatures = {
     basic: [
       { icon: Zap, text: '60 content repurposes per month' },
-      { icon: CreditCard, text: 'All major platform templates' },
-      { icon: CheckCircle, text: 'Priority customer support' },
-      { icon: BarChart3, text: 'Basic analytics dashboard' },
+      { icon: CreditCard, text: 'Twitter, Instagram & Facebook templates' },
+      { icon: CheckCircle, text: 'Basic customer support' },
+      { icon: BarChart3, text: 'Basic analytics' },
     ],
     pro: [
-      { icon: Zap, text: '200 content repurposes per month' },
-      { icon: CreditCard, text: 'Advanced AI model access' },
+      { icon: Zap, text: '150 content repurposes per month' },
+      { icon: CreditCard, text: 'All platforms + custom templates' },
       { icon: BarChart3, text: 'Professional analytics' },
-      { icon: CheckCircle, text: 'API access for integrations' },
-      { icon: Users, text: 'Bulk processing features' },
+      { icon: CheckCircle, text: 'Professional customer support' },
     ],
     agency: [
-      { icon: Zap, text: 'Unlimited content repurposes' },
-      { icon: Users, text: 'Team management (up to 5 members)' },
-      { icon: BarChart3, text: 'Advanced agency analytics' },
-      { icon: CheckCircle, text: 'Dedicated priority support' },
-      { icon: CreditCard, text: 'White-label solution' },
-      { icon: Calendar, text: 'Custom integrations' },
+      { icon: Zap, text: '450 content repurposes per month' },
+      { icon: Users, text: 'Up to 3 team members included' },
+      { icon: BarChart3, text: 'Professional analytics' },
+      { icon: CheckCircle, text: 'Priority support' },
+      { icon: CreditCard, text: 'Team collaboration & analytics' },
     ],
   };
 

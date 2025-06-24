@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { getAllPlans } from '@/lib/pricing-config';
 
 // Server-side Stripe instance - lazy initialization for serverless
 let stripeInstance: Stripe | null = null;
@@ -79,34 +80,44 @@ export function validateStripeConfig() {
   };
 }
 
-// Plan details
-export const PLAN_DETAILS = {
-  free: {
-    name: 'Free',
-    price: 0,
-    priceId: null,
-    features: ['5 content repurposes per month', 'Basic AI model', 'Twitter & Instagram templates', 'No daily limit'],
-    limits: { monthlyLimit: 5, dailyLimit: -1, overageRate: 0.12, maxTeamMembers: 0 }
-  },
-  basic: {
-    name: 'Basic',
-    price: 6.99,
-    priceId: STRIPE_PRICE_IDS.basic,
-    features: ['2 repurposes per day (60/month)', 'Standard AI model', 'Twitter, Instagram & Facebook templates', 'Basic customer support', 'Basic Analytics'],
-    limits: { monthlyLimit: 60, dailyLimit: 2, overageRate: 0.10, maxTeamMembers: 0 }
-  },
-  pro: {
-    name: 'Pro',
-    price: 14.99,
-    priceId: STRIPE_PRICE_IDS.pro,
-    features: ['5 repurposes per day (150/month)', 'Advanced AI model', 'All major platforms + LinkedIn templates', 'Professional customer support', 'Professional Analytics'],
-    limits: { monthlyLimit: 150, dailyLimit: 5, overageRate: 0.08, maxTeamMembers: 0 }
-  },
-  agency: {
-    name: 'Agency',
-    price: 29.99,
-    priceId: STRIPE_PRICE_IDS.agency,
-    features: ['450 repurposes per month', 'No daily limit', 'Up to 3 team members', 'Advanced AI model', 'All platforms + custom templates', 'Priority Support', 'Team collaboration & analytics'],
-    limits: { monthlyLimit: 450, dailyLimit: -1, overageRate: 0.06, maxTeamMembers: 3 }
+// Plan details - now using centralized pricing config
+export function getPlanDetails() {
+  const plans = getAllPlans();
+  const planDetails: Record<string, {
+    name: string;
+    price: number;
+    priceId: string | null | undefined;
+    features: readonly string[];
+    limits: {
+      monthlyLimit: number;
+      dailyLimit: number;
+      overageRate: number;
+      maxTeamMembers: number;
+    };
+  }> = {};
+  
+  plans.forEach(plan => {
+    planDetails[plan.id] = {
+      name: plan.name,
+      price: plan.price,
+      priceId: plan.stripePriceId,
+      features: plan.features,
+      limits: {
+        monthlyLimit: plan.monthlyLimit === -1 ? -1 : plan.monthlyLimit,
+        dailyLimit: plan.dailyLimit === -1 ? -1 : plan.dailyLimit,
+        overageRate: plan.overagePrice,
+        maxTeamMembers: plan.teamMembers > 1 ? plan.teamMembers : 0
+      }
+    };
+  });
+  
+  return planDetails;
+}
+
+// Backward compatibility - will be deprecated
+export const PLAN_DETAILS = new Proxy({}, {
+  get(target, prop) {
+    console.warn('PLAN_DETAILS is deprecated. Use getPlanDetails() instead.');
+    return getPlanDetails()[prop as string];
   }
-} as const; 
+}); 
